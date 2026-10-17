@@ -49,7 +49,6 @@ chaquopy {
         version "3.9"
         pip {
             install "Flask==2.3.3"
-            install "flask-limiter==3.5.0"
             install "requests==2.31.0"
             install "waitress==3.0.0"
             install "beautifulsoup4==4.12.2"
