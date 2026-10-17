@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="file" path="planner.db" />
+    <exclude domain="file" path="planner.db-wal" />
+    <exclude domain="file" path="planner.db-shm" />
+    <exclude domain="file" path="schedules/" />
+    <exclude domain="file" path="teacher_schedules/" />
+</full-backup-content>

@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Ежедневник СевГУ</title>
+
+    <script nonce="{{ csp_nonce }}">
+    (function () {
+        try {
+            var t = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', t);
+            document.documentElement.setAttribute('data-bs-theme', t === 'dark' ? 'dark' : 'light');
+            if (t === 'custom') {
+                var raw = localStorage.getItem('customTheme');
+                if (raw) {
+                    var d = JSON.parse(raw);
+                    if (d && d.colors) {
+                        for (var k in d.colors) {
+                            document.documentElement.style.setProperty(k, d.colors[k]);
+                        }
+                    }
+                }
+            }
+        } catch (e) {}
+    })();
+    </script>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Caveat:wght@600;700&family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet">
+    <link href="/static/css/style.css?v={{ app_version }}" rel="stylesheet">
+    <link href="/static/css/fixes.css?v={{ app_version }}" rel="stylesheet">
+    <link href="/static/css/hedgehog.css?v={{ app_version }}" rel="stylesheet">
+    <link href="/static/css/mobile.css?v={{ app_version }}" rel="stylesheet">
+    <link href="/static/css/teachers.css?v={{ app_version }}" rel="stylesheet">
+    <link href="/static/css/animations.css?v={{ app_version }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body data-mobile-tab="schedule">
+
+<div id="updateNotification" class="position-fixed bottom-0 end-0 p-3" style="z-index: 11000; display: none;">
+    <div class="bg-success text-white px-4 py-2 rounded shadow-sm fw-bold d-flex align-items-center gap-2" style="opacity: 0.95;">
+        <span style="font-size: 1.2em;">🔄</span>
+        <span id="updateNotificationText">Расписание обновлено</span>
+    </div>
+</div>
+
+<div id="undoBar" style="display: none;">
+    <span id="undoBarText">Заметка удалена</span>
+    <button type="button" id="undoBarBtn">Отменить</button>
+</div>
+
+<div id="globalLoader" style="display: none;">
+    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
+    <div id="loaderText" class="mt-3 fw-bold text-secondary fs-5">Загрузка...</div>
+</div>
+
+<div class="container-fluid p-3">
+    <div class="controls-header bg-white p-2 rounded shadow-sm border mb-3">
+        <div class="row align-items-center">
+            <div class="col-md-2">
+                <h5 class="mb-0 fw-bold d-flex align-items-center brand-title" style="color: var(--accent); letter-spacing: -0.5px;">
+                    <span id="ezh-logo" style="font-size: 2.2rem; line-height: 0.5; margin-right: 0px; margin-left: -5px; display: inline-block; transition: transform 0.05s linear; transform-origin: center;">🦔</span>
+                    <span>дневник</span>
+                </h5>
+            </div>
+            <div class="col-md-3">
+                <div class="input-group input-group-sm">
+                    <input type="text" id="groupSelect" class="form-control" placeholder="Начните вводить группу..." autocomplete="off">
+                    <button class="btn btn-primary" onclick="fetchSemesterData()">Найти</button>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <select id="subgroupSelect" class="form-select form-select-sm" onchange="fetchSemesterData()">
+                    <option value="0">Все подгруппы</option>
+                    <option value="1">1 подгруппа</option>
+                    <option value="2">2 подгруппа</option>
+                </select>
+            </div>
+            <div class="col-md-5 d-flex align-items-center justify-content-end gap-2">
+                <button class="btn btn-outline-secondary btn-sm fw-bold shadow-sm header-icon-btn d-none d-md-inline-flex"
+                        onclick="openSearchModal()" title="Поиск по заметкам и событиям (Ctrl+K)">&#128269;</button>
+                <button class="btn btn-outline-secondary btn-sm fw-bold shadow-sm header-icon-btn d-none d-md-inline-flex"
+                        onclick="manualRefresh()" id="refreshBtn"
+                        title="Принудительно обновить расписание с сервера СевГУ">
+                    <span id="refreshIcon">&#128260;</span>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm fw-bold shadow-sm header-icon-btn d-none d-md-inline-flex"
+                        onclick="openSettingsModal()" title="Настройки">&#9881;&#65039;</button>
+
+                <button class="btn btn-outline-primary btn-sm fw-bold shadow-sm d-none d-md-inline-flex" onclick="goToToday()">Сегодня</button>
+                <div class="dropdown d-none d-md-block">
+                    <button class="btn btn-outline-primary btn-sm dropdown-toggle fw-bold shadow-sm" type="button" id="weekDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false" style="min-width: 200px;">
+                        📅 Неделя
+                    </button>
+                    <ul class="dropdown-menu scrollable-weeks shadow-sm border" id="weekDropdownMenu" aria-labelledby="weekDropdownBtn"></ul>
+                </div>
+                <div class="dropdown d-md-none mobile-nav-menu">
+                    <button class="btn btn-outline-secondary btn-sm fw-bold shadow-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">⋮</button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                        <li><a class="dropdown-item" href="#" onclick="openSearchModal(); return false;">🔍 Поиск</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="manualRefresh(); return false;">🔄 Обновить</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="downloadICS(); return false;">📅 Скачать .ics</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="openSettingsModal(); return false;">⚙️ Настройки</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="goToToday(); return false;">🏠 Сегодня</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="changeWeek(-1); return false;">◀ Пред. неделя</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="changeWeek(1); return false;">След. неделя ▶</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-6 text-start small schedule-status" id="scheduleStatus"></div>
+            <div class="col-6 text-end small sync-freshness" id="syncFreshness"></div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-9 col-lg-8 mb-4 main-column">
+            <div class="d-flex flex-column w-100">
+                <div class="calendar-nav-row">
+                    <div class="nav-side">
+                        <button class="nav-arrow" onclick="navigatePrev()">&#10094;</button>
+                    </div>
+                    <div class="calendar-grid flex-grow-1" id="calendar"></div>
+                    <div class="nav-side">
+                        <button class="nav-arrow" onclick="navigateNext()">&#10095;</button>
+                    </div>
+                </div>
+
+                <div id="mainColumnSections">
+
+                    <div id="friendsSection" data-draggable-section>
+                        <div class="mt-4 text-start d-flex align-items-center flex-wrap gap-2 mb-2 bg-white p-2 rounded shadow-sm border" id="friendsControlsPanel">
+                            <span class="section-drag-handle" title="Перетащить раздел">⋮⋮</span>
+
+                            <button class="btn btn-sm btn-outline-secondary fw-bold header-icon-btn"
+                                    id="switchTabToTeachersBtn"
+                                    onclick="switchFriendsTeachersTab('teachers')"
+                                    title="Переключиться на преподавателей"
+                                    style="display: none;">🎓</button>
+
+                            <button class="btn btn-sm btn-outline-primary fw-bold" onclick="showAddFriendModal()">+ Добавить друга</button>
+                            <div class="vr mx-1"></div>
+
+                            <div class="dropdown d-flex align-items-center">
+                                <button class="btn btn-sm btn-primary text-white dropdown-toggle fw-bold shadow-sm" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                    Кого показывать?
+                                </button>
+                                <div id="friendsLoader" class="spinner-border spinner-border-sm text-primary ms-2" role="status" style="display: none;"></div>
+                                <ul class="dropdown-menu shadow-sm border-0" id="friendTogglesDropdown" style="min-width: 250px;"></ul>
+                            </div>
+
+                            <div class="ms-auto d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-secondary fw-bold header-icon-btn"
+                                        onclick="rotateFriendsRight()" title="Прокрутить: последний → в начало">⇅</button>
+                            </div>
+                        </div>
+
+                        <div class="friends-list-wrapper">
+                            <div class="friends-nav-btn friends-nav-prev" id="friendsNavPrev">
+                                <button class="nav-arrow" onclick="navigatePrev()">&#10094;</button>
+                            </div>
+                            <div class="friends-nav-btn friends-nav-next" id="friendsNavNext">
+                                <button class="nav-arrow" onclick="navigateNext()">&#10095;</button>
+                            </div>
+
+                            <div id="friendsCalendarsContainer" class="d-flex flex-column gap-3 mb-4"></div>
+                        </div>
+                    </div>
+
+                    <div id="teachersSection" data-draggable-section>
+                        <div class="mt-4 text-start d-flex align-items-center flex-wrap gap-2 mb-2 bg-white p-2 rounded shadow-sm border" id="teachersControlsPanel">
+                            <span class="section-drag-handle" title="Перетащить раздел">⋮⋮</span>
+
+                            <button class="btn btn-sm btn-outline-secondary fw-bold header-icon-btn"
+                                    id="switchTabToFriendsBtn"
+                                    onclick="switchFriendsTeachersTab('friends')"
+                                    title="Переключиться на друзей"
+                                    style="display: none;">👥</button>
+
+                            <button class="btn btn-sm btn-outline-primary fw-bold" onclick="showAddTeacherModal()">+ Добавить преподавателя</button>
+                            <div class="vr mx-1"></div>
+
+                            <div class="dropdown d-flex align-items-center">
+                                <button class="btn btn-sm btn-primary text-white dropdown-toggle fw-bold shadow-sm" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                                    Кого показывать?
+                                </button>
+                                <div id="teachersLoader" class="spinner-border spinner-border-sm text-primary ms-2" role="status" style="display: none;"></div>
+                                <ul class="dropdown-menu shadow-sm border-0" id="teacherTogglesDropdown" style="min-width: 250px;"></ul>
+                            </div>
+
+                            <div class="ms-auto d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-secondary fw-bold header-icon-btn"
+                                        onclick="rotateTeachersRight()" title="Прокрутить: последний → в начало">⇅</button>
+                            </div>
+                        </div>
+
+                        <div id="teachersCalendarsContainer" class="d-flex flex-column gap-3 mb-4"></div>
+                    </div>
+                </div>
+
+                <div id="underCalendarWidgetsZone"></div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-lg-4 sidebar-column">
+            <div id="rightWidgetsZone" class="sticky-top d-flex flex-column gap-3" style="top: 15px;">
+
+                <div class="widget-card" id="widgetMiniCalCard" data-draggable-widget>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title">📅 <span id="miniCalendarTitle">—</span></h6>
+                        <div class="widget-header-actions">
+                            <button class="btn btn-sm btn-light py-0 px-2 fw-bold" onclick="miniCalPrevMonth()" title="Предыдущий месяц">‹</button>
+                            <button class="btn btn-sm btn-light py-0 px-2 fw-bold" onclick="miniCalToday()" title="К текущему месяцу">●</button>
+                            <button class="btn btn-sm btn-light py-0 px-2 fw-bold" onclick="miniCalNextMonth()" title="Следующий месяц">›</button>
+                        </div>
+                    </div>
+                    <div class="mini-cal-body-row">
+                        <div id="miniCalendarBody" class="mini-calendar"></div>
+                        <div class="mini-cal-events" id="miniCalEvents"></div>
+                    </div>
+                </div>
+
+                <div class="widget-card" id="widgetGlobalCard" data-draggable-widget>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title clickable" onclick="showStats()">Остаток пар</h6>
+                    </div>
+                    <div class="widget-body-row">
+                        <div class="widget-canvas-wrap" id="globalStatsBody" onclick="showStats()" title="Подробнее">
+                            <canvas id="globalStatsChart"></canvas>
+                        </div>
+                        <div class="widget-details-wrap" id="globalStatsDetails"></div>
+                    </div>
+                </div>
+
+                <div class="widget-card" id="widgetLabsCard" data-draggable-widget>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title clickable" onclick="showLabs()">Лабораторные</h6>
+                    </div>
+                    <div class="widget-body-row">
+                        <div class="widget-canvas-wrap" id="labStatsBody" onclick="showLabs()" title="Подробнее">
+                            <canvas id="labStatsChart"></canvas>
+                        </div>
+                        <div class="widget-details-wrap" id="labStatsDetails"></div>
+                    </div>
+                </div>
+
+                <div class="widget-card" id="widgetPacingCard" data-draggable-widget>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title">Темп сдачи лаб</h6>
+                    </div>
+                    <div id="labPacingBody" style="max-height: 340px; overflow-y: auto;">
+                        <div id="labPacingContent"></div>
+                    </div>
+                </div>
+
+                <div class="widget-card" id="widgetNotesCard" data-draggable-widget>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title">📝 Заметки</h6>
+                    </div>
+                    <textarea id="notesWidgetText" class="form-control form-control-sm"
+                              placeholder="Что-нибудь важное..."
+                              oninput="onNotesWidgetInput(this)"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addFriendModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold">Добавить друга</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3"><label class="form-label small">Имя (или ник)</label>
+            <input type="text" id="friendName" class="form-control form-control-sm"></div>
+        <div class="mb-3"><label class="form-label small">Группа</label>
+            <input type="text" id="friendGroup" class="form-control form-control-sm" placeholder="Начните вводить..." autocomplete="off"></div>
+        <div class="mb-3"><label class="form-label small">Подгруппа</label>
+            <select id="friendSubgroup" class="form-select form-select-sm">
+                <option value="0">Все подгруппы</option>
+                <option value="1">1 подгруппа</option>
+                <option value="2">2 подгруппа</option>
+            </select></div>
+        <div class="mb-3"><label class="form-label small">Папка (группировка)</label>
+            <select id="friendCategory" class="form-control form-control-sm" onchange="handleCategorySelect(this)"></select></div>
+      </div>
+      <div class="modal-footer py-1 border-0">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveFriend()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="addTeacherModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold">🎓 Добавить преподавателя</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <input type="text" id="teacherAddInput" class="form-control form-control-sm"
+                 placeholder="Начните вводить ФИО преподавателя…" autocomplete="off"
+                 oninput="onTeacherSearchInput(this.value)"
+                 onfocus="onTeacherSearchFocus()">
+        </div>
+        <div class="small text-muted mb-2" id="teacherAddHint"></div>
+        <div id="teacherAddSuggestions" class="teacher-suggestions"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="searchModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <div class="input-group input-group-sm flex-grow-1">
+          <span class="input-group-text border-end-0">🔍</span>
+          <input type="text" id="searchInput" class="form-control border-start-0"
+                 placeholder="Поиск по заметкам и событиям..." autocomplete="off">
+        </div>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="searchResults">
+        <div class="text-center text-muted small py-4">Начните вводить запрос (минимум 2 символа)</div>
+      </div>
+      <div class="modal-footer py-1 border-0 justify-content-between">
+        <small class="text-muted">Esc — закрыть</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="statsModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold">Остаток пар по предметам</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="statsContent"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="labsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold">Управление лабораторными</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="labsContent"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="labItemsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold" id="labItemsModalTitle">Предмет</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="labItemsContent">
+        <div class="text-center text-muted small py-4">Загрузка…</div>
+      </div>
+      <div class="modal-footer py-1 border-0 justify-content-between">
+        <small class="text-muted">Клик по названию — переименовать</small>
+        <button type="button" class="btn btn-primary btn-sm" data-bs-dismiss="modal">Готово</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="customScheduleModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold" id="customScheduleModalTitle">Добавить в расписание</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="csId"><input type="hidden" id="csBaseDate"><input type="hidden" id="csTargetDate">
+        <div class="mb-3 d-flex gap-3">
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="csType" id="csTypeEvent" value="1" checked onchange="toggleCsFields()">
+                <label class="form-check-label small fw-bold" for="csTypeEvent">Событие</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="csType" id="csTypeClass" value="0" onchange="toggleCsFields()">
+                <label class="form-check-label small fw-bold" for="csTypeClass">Пара</label>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label small">Время</label>
+            <div class="d-flex align-items-center gap-2">
+                <select id="csClassNum" class="form-select form-select-sm" onchange="updateTimeFromClassNum()" style="display: none; min-width: 130px;">
+                    <option value="1">1 пара</option><option value="2">2 пара</option><option value="3">3 пара</option>
+                    <option value="4">4 пара</option><option value="5">5 пара</option><option value="6">6 пара</option>
+                    <option value="7">7 пара</option><option value="8">8 пара</option>
+                </select>
+                <div id="csTimeWrapper" class="d-flex align-items-center gap-2 w-100">
+                    <input type="time" id="csTimeStart" class="form-control form-control-sm" required>
+                    <span>-</span>
+                    <input type="time" id="csTimeEnd" class="form-control form-control-sm" required>
+                </div>
+            </div>
+        </div>
+        <div class="mb-3"><label class="form-label small" id="csLessonLabel">Текст события</label>
+            <input type="text" id="csLesson" class="form-control form-control-sm" placeholder="Название..."></div>
+        <div id="csClassFields" style="display: none;">
+            <div class="mb-3"><label class="form-label small">Тип пары (Лекция, ПЗ, ЛЗ)</label>
+                <input type="text" id="csTypeName" class="form-control form-control-sm" placeholder="ПЗ"></div>
+            <div class="mb-3"><label class="form-label small">Преподаватель</label>
+                <input type="text" id="csTeacher" class="form-control form-control-sm" placeholder="ФИО"></div>
+            <div class="mb-3"><label class="form-label small">Аудитория</label>
+                <input type="text" id="csLocation" class="form-control form-control-sm" placeholder="Ауд..."></div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label small">Повторение</label>
+            <select id="csRecurrence" class="form-select form-select-sm">
+                <option value="none">Только на этот день</option>
+                <option value="weekly">Каждую неделю</option>
+                <option value="biweekly">Каждую чередующуюся неделю (раз в 2 недели)</option>
+            </select>
+        </div>
+      </div>
+      <div class="modal-footer py-1 border-0 justify-content-between">
+        <button type="button" class="btn btn-danger btn-sm" id="csDeleteBtn" onclick="deleteCustomSchedule()" style="display:none;">Удалить</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveCustomSchedule()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="recurrenceActionModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold" id="recurrenceActionTitle">Изменение события</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="small mb-3 text-muted">Как применить изменения?</p>
+        <div class="d-grid gap-2">
+            <button class="btn btn-outline-primary btn-sm fw-bold" id="btnRecurrenceSingle">Только для этой недели</button>
+            <button class="btn btn-primary btn-sm fw-bold" id="btnRecurrenceAll">Для всех недель</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="taskKindModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold">Что за заметка?</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-3 text-muted">Что нужно сделать с этим предметом?</p>
+        <div class="d-grid gap-2">
+            <button class="btn btn-primary btn-sm fw-bold" id="btnTaskKindDo">📝 Сделать</button>
+            <button class="btn btn-primary btn-sm fw-bold" id="btnTaskKindSubmit">✅ Сдать</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="subjectSettingsModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title fw-bold">Настройка предмета</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="origSubjectName">
+        <div class="mb-3"><label class="form-label small">Оригинальное название</label>
+            <div id="subjectOrigNameDisplay" class="text-muted small fw-bold mb-2"></div></div>
+        <div class="mb-3"><label class="form-label small">Свое название (оставьте пустым для оригинала)</label>
+            <input type="text" id="subjectCustomName" class="form-control form-control-sm" placeholder="Например: Матеша"></div>
+        <div class="mb-3"><label class="form-label small">Глобальное ФИО преподавателя</label>
+            <input type="text" id="subjectTeacher" class="form-control form-control-sm" placeholder="Иванов И.И."></div>
+        <div class="mb-3"><label class="form-label small">Глобальная аудитория</label>
+            <input type="text" id="subjectLocation" class="form-control form-control-sm" placeholder="Ауд. I-416"></div>
+        <div class="mb-3"><label class="form-label small">Ссылка (Moodle, Zoom, и др.)</label>
+            <input type="url" id="subjectLink" class="form-control form-control-sm" placeholder="https://..."></div>
+      </div>
+      <div class="modal-footer py-1 border-0">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveSubjectSettings()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="settingsModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width: 560px;">
+    <div class="modal-content border-0 shadow settings-modal">
+      <div class="modal-header py-3">
+        <h5 class="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+          <span style="font-size: 1.2em;">⚙️</span>
+          <span>Настройки</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body p-0">
+
+        <div class="settings-group">
+          <div class="settings-group-title">📋 Отображение пар</div>
+
+          <label class="settings-row" for="settingsToggleTeacher">
+            <span class="settings-row-label">ФИО преподавателей</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleTeacher" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleLocation">
+            <span class="settings-row-label">Номера аудиторий</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleLocation" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleFriends">
+            <span class="settings-row-label">Подробные пары друзей</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleFriends" onchange="saveSettingsFromUI()">
+          </label>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">🧩 Виджеты</div>
+
+          <label class="settings-row" for="settingsToggleSeparateFriendsTeachers">
+            <span class="settings-row-label">Раздельные преподаватели и друзья</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleSeparateFriendsTeachers" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleFriendsSection">
+            <span class="settings-row-label">Друзья</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleFriendsSection" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleTeachersSection">
+            <span class="settings-row-label">Преподаватели</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleTeachersSection" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleWidgetMiniCal">
+            <span class="settings-row-label">Мини-календарь</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleWidgetMiniCal" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleWidgetGlobal">
+            <span class="settings-row-label">Остаток пар</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleWidgetGlobal" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleWidgetLabs">
+            <span class="settings-row-label">Лабораторные</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleWidgetLabs" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleWidgetPacing">
+            <span class="settings-row-label">Темп сдачи лаб</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleWidgetPacing" onchange="saveSettingsFromUI()">
+          </label>
+
+          <label class="settings-row" for="settingsToggleWidgetNotes">
+            <span class="settings-row-label">Заметки</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleWidgetNotes" onchange="saveSettingsFromUI()">
+          </label>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">⏱ Статус-строка</div>
+
+          <label class="settings-row" for="settingsToggleStatus">
+            <span class="settings-row-label">Показывать статус под шапкой</span>
+            <input class="form-check-input" type="checkbox" id="settingsToggleStatus" onchange="saveSettingsFromUI()">
+          </label>
+
+          <div class="settings-row-inline">
+            <span class="settings-row-label">Формат</span>
+            <select class="form-select form-select-sm" id="settingsStatusFormat" onchange="saveSettingsFromUI()" style="max-width: 180px;">
+              <option value="interval">интервал</option>
+              <option value="both">интервал + время</option>
+              <option value="time">время</option>
+            </select>
+          </div>
+
+          <div class="settings-row-inline">
+            <span class="settings-row-label">Точность</span>
+            <select class="form-select form-select-sm" id="settingsStatusPrecision" onchange="saveSettingsFromUI()" style="max-width: 180px;">
+              <option value="min">до минуты</option>
+              <option value="sec">до секунды</option>
+              <option value="cs">до сотых</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">🔔 Уведомления</div>
+
+          <label class="settings-row" for="settingsNotifEnabled">
+            <span class="settings-row-label">Включить уведомления</span>
+            <input class="form-check-input" type="checkbox" id="settingsNotifEnabled" onchange="handleNotificationsToggle(this)">
+          </label>
+
+          <div class="settings-row-inline">
+            <span class="settings-row-label">Напомнить за</span>
+            <div class="d-flex align-items-center gap-2">
+              <input type="number" id="settingsNotifAdvance" class="form-control form-control-sm"
+                     style="width: 68px;" min="1" max="60" onchange="saveSettingsFromUI()">
+              <select id="settingsNotifUnit" class="form-select form-select-sm"
+                      style="width: auto;" onchange="saveSettingsFromUI()">
+                <option value="min">минут</option>
+                <option value="hour">часов</option>
+                <option value="day">дней</option>
+                <option value="week">недель</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="settingsNotifHint" class="settings-hint-box" style="display: none;"></div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">📤 Экспорт</div>
+          <button class="btn btn-outline-primary w-100" onclick="downloadICS()">
+            📅 Скачать расписание (.ics)
+          </button>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">🎨 Тема оформления</div>
+
+          <div class="settings-row-inline">
+            <span class="settings-row-label">Цветовая схема</span>
+            <select class="form-select form-select-sm" id="settingsTheme" onchange="saveSettingsFromUI()" style="max-width: 220px;">
+              <optgroup label="Базовые">
+                <option value="light">☀️ Светлая</option>
+                <option value="dark">🌙 Тёмная</option>
+                <option value="forest">🌿 Лесная</option>
+                <option value="sunset">🌅 Закат</option>
+                <option value="ocean">🌊 Океан</option>
+              </optgroup>
+              <optgroup label="Особые">
+                <option value="hedgehog">🦔 Ежики</option>
+                <option value="southpark">🎿 Южный парк</option>
+                <option value="anime">🌸 Аниме</option>
+              </optgroup>
+              <optgroup label="OLED (чёрный фон)">
+                <option value="oled">🌑 OLED Deep</option>
+                <option value="oled-warm">🔥 OLED Warm</option>
+              </optgroup>
+              <optgroup label="Своя">
+                <option value="custom">🎨 Своя тема</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <div id="customThemePanel" class="mt-3" style="display: none;">
+            <div class="custom-theme-warning">
+              ⚠️ <strong>Будьте осторожны</strong> при создании своей темы: некоторая часть функционала может стать невидимой.
+            </div>
+
+            <div class="settings-subsection">Взять за основу готовую</div>
+            <div class="input-group input-group-sm mb-2">
+              <select id="customThemeBaseSelect" class="form-select form-select-sm">
+                <option value="">— выбрать тему —</option>
+                <optgroup label="Базовые">
+                  <option value="light">☀️ Светлая</option>
+                  <option value="dark">🌙 Тёмная</option>
+                  <option value="forest">🌿 Лесная</option>
+                  <option value="sunset">🌅 Закат</option>
+                  <option value="ocean">🌊 Океан</option>
+                </optgroup>
+                <optgroup label="Особые">
+                  <option value="hedgehog">🦔 Ежики</option>
+                  <option value="southpark">🎿 Южный парк</option>
+                  <option value="anime">🌸 Аниме</option>
+                </optgroup>
+                <optgroup label="OLED (чёрный фон)">
+                  <option value="oled">🌑 OLED Deep</option>
+                  <option value="oled-warm">🔥 OLED Warm</option>
+                </optgroup>
+              </select>
+              <button class="btn btn-outline-primary" type="button" onclick="applyBaseThemeFromSelect()">Применить</button>
+            </div>
+
+            <div class="settings-subsection">Мои сохранённые темы</div>
+            <div class="input-group input-group-sm mb-2">
+              <input type="text" id="customThemePresetName" class="form-control"
+                     placeholder="Название темы" maxlength="40"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();saveCurrentAsPreset();}">
+              <button class="btn btn-outline-primary" type="button" onclick="saveCurrentAsPreset()">💾 Сохранить</button>
+            </div>
+            <div id="customThemePresets" class="custom-presets-list mb-2"></div>
+
+            <div class="collapsible-section">
+              <button type="button" class="collapsible-header" onclick="toggleCustomSection('colors')">
+                <span>🎨 Цвета</span>
+                <span class="collapsible-arrow" id="arrow-colors">▸</span>
+              </button>
+              <div id="custom-section-colors" class="collapsible-body" style="display: none;">
+                <div id="customThemePickers" class="custom-pickers-grid"></div>
+                <button type="button" id="customThemeAdvancedToggle"
+                        class="btn btn-sm btn-outline-secondary w-100 mt-2"
+                        onclick="toggleCustomThemeAdvanced()">▼ Показать все цвета</button>
+              </div>
+            </div>
+
+            <div class="collapsible-section">
+              <button type="button" class="collapsible-header" onclick="toggleCustomSection('bg')">
+                <span>🖼 Фон</span>
+                <span class="collapsible-arrow" id="arrow-bg">▸</span>
+              </button>
+              <div id="custom-section-bg" class="collapsible-body" style="display: none;">
+                <div class="mb-2">
+                  <label class="small text-muted mb-1 d-block">Фото с компьютера (сжимается до 800px)</label>
+                  <div class="input-group input-group-sm">
+                    <input type="file" id="customThemePhotoFile" class="form-control form-control-sm"
+                           accept="image/*" onchange="onCustomPhotoUpload(this)">
+                    <button class="btn btn-outline-secondary" type="button" onclick="clearCustomPhoto()" title="Удалить фото">✕</button>
+                  </div>
+                  <div id="customThemePhotoMeta" class="small text-muted mt-1"></div>
+                </div>
+
+                <button type="button" class="btn btn-sm btn-outline-primary w-100 mb-2"
+                        onclick="applyThemeFromPhoto()">
+                  🎨 Взять цвета с фото
+                </button>
+
+                <div class="mb-0">
+                  <label class="small text-muted mb-1 d-block">
+                    Видимость фото: <span id="customThemePhotoOpacityVal">15</span>%
+                  </label>
+                  <input type="range" id="customThemePhotoOpacity" min="0" max="100" value="15"
+                         class="form-range" oninput="onCustomOpacityChange(this, 'photo')">
+                </div>
+              </div>
+            </div>
+
+            <div class="collapsible-section">
+              <button type="button" class="collapsible-header" onclick="toggleCustomSection('stickers')">
+                <span>✨ Стикеры</span>
+                <span class="collapsible-arrow" id="arrow-stickers">▸</span>
+              </button>
+              <div id="custom-section-stickers" class="collapsible-body" style="display: none;">
+                <div class="mb-2">
+                  <label class="small text-muted mb-1 d-block">Эмодзи через пробел, до 4 штук</label>
+                  <input type="text" id="customThemeStickers" class="form-control form-control-sm"
+                         placeholder="🦔 🌸 ⭐" oninput="onCustomStickersChange(this)">
+                </div>
+                <div class="mb-0">
+                  <label class="small text-muted mb-1 d-block">
+                    Прозрачность: <span id="customThemeStickersOpacityVal">15</span>%
+                  </label>
+                  <input type="range" id="customThemeStickersOpacity" min="0" max="100" value="15"
+                         class="form-range" oninput="onCustomOpacityChange(this, 'stickers')">
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+              <button class="btn btn-sm btn-outline-secondary flex-grow-1" type="button" onclick="resetCustomTheme()">
+                ↺ Сбросить к светлым
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script src="/static/js/state.js?v={{ app_version }}"></script>
+<script src="/static/js/utils.js?v={{ app_version }}"></script>
+<script src="/static/js/ui.js?v={{ app_version }}"></script>
+<script src="/static/js/api.js?v={{ app_version }}"></script>
+<script src="/static/js/autocomplete.js?v={{ app_version }}"></script>
+<script src="/static/js/weeks.js?v={{ app_version }}"></script>
+<script src="/static/js/mini-calendar.js?v={{ app_version }}"></script>
+
+<!-- Календарь: карточки → день → оркестратор -->
+<script src="/static/js/calendar-cards.js?v={{ app_version }}"></script>
+<script src="/static/js/calendar-day.js?v={{ app_version }}"></script>
+<script src="/static/js/calendar.js?v={{ app_version }}"></script>
+
+<script src="/static/js/navigation.js?v={{ app_version }}"></script>
+<script src="/static/js/status.js?v={{ app_version }}"></script>
+<script src="/static/js/tasks.js?v={{ app_version }}"></script>
+<script src="/static/js/custom-schedule.js?v={{ app_version }}"></script>
+<script src="/static/js/friends.js?v={{ app_version }}"></script>
+
+<!-- Виджеты: поштучные лабы → сводки → графики -->
+<script src="/static/js/lab-items.js?v={{ app_version }}"></script>
+<script src="/static/js/widgets-stats.js?v={{ app_version }}"></script>
+<script src="/static/js/widgets-labs.js?v={{ app_version }}"></script>
+<script src="/static/js/widgets.js?v={{ app_version }}"></script>
+
+<script src="/static/js/search.js?v={{ app_version }}"></script>
+<script src="/static/js/refresh.js?v={{ app_version }}"></script>
+<script src="/static/js/custom-theme.js?v={{ app_version }}"></script>
+<script src="/static/js/main.js?v={{ app_version }}"></script>
+<script src="/static/js/settings.js?v={{ app_version }}"></script>
+<script src="/static/js/notifications.js?v={{ app_version }}"></script>
+<script src="/static/js/hotkeys.js?v={{ app_version }}"></script>
+<script src="/static/js/teachers.js?v={{ app_version }}"></script>
+<script src="/static/js/mobile.js?v={{ app_version }}"></script>
+
+<nav class="mobile-bottom-nav d-md-none" id="mobileBottomNav">
+    <button type="button" class="mobile-nav-item active" data-tab="schedule" onclick="switchMobileTab('schedule')">
+        <span class="nav-icon">📅</span><span>Расписание</span>
+    </button>
+    <button type="button" class="mobile-nav-item" data-tab="people" onclick="switchMobileTab('people')">
+        <span class="nav-icon">👥</span><span>Люди</span>
+    </button>
+    <button type="button" class="mobile-nav-item" data-tab="widgets" onclick="switchMobileTab('widgets')">
+        <span class="nav-icon">📊</span><span>Виджеты</span>
+    </button>
+    <button type="button" class="mobile-nav-item" onclick="openSettingsModal()">
+        <span class="nav-icon">⚙️</span><span>Настройки</span>
+    </button>
+</nav>
+
+</body>
+</html>
