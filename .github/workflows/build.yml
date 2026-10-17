@@ -24,13 +24,19 @@ jobs:
       with:
         gradle-version: '8.9'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+    # Просто принимаем лицензии у уже установленного SDK
+    - name: Accept Android SDK licenses
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+    # Создаем файл с путями
+    - name: Create local.properties
+      run: echo "sdk.dir=$ANDROID_HOME" > EzhAndroid/local.properties
 
     - name: Build with Gradle
       run: |
         cd EzhAndroid
-        gradle assembleDebug
+        gradle assembleDebug --stacktrace
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
