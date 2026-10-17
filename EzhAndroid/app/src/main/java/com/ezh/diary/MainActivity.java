@@ -21,6 +21,8 @@ import androidx.core.app.ActivityCompat;
 import com.chaquo.python.Python;
 
 import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 
@@ -101,16 +103,42 @@ public class MainActivity extends AppCompatActivity {
             @Override public void run() {
                 try {
                     runOnUiThread(new Runnable() {
-                        @Override public void run() { splashStatus.setText("Запуск сервера…"); }
+                        @Override public void run() { 
+                            splashStatus.setText("Запуск Python сервера..."); 
+                        }
                     });
+                    
                     Python py = Python.getInstance();
                     py.getModule("android_server")
                       .callAttr("start_server", dataDir.getAbsolutePath());
+                      
                 } catch (final Exception e) {
                     Log.e(TAG, "Python server failed", e);
+                    
+                    // Формируем подробный текст ошибки
+                    StringWriter sw = new StringWriter();
+                    PrintWriter pw = new PrintWriter(sw);
+                    e.printStackTrace(pw);
+                    
+                    Throwable rootCause = e;
+                    while (rootCause.getCause() != null) {
+                        rootCause = rootCause.getCause();
+                    }
+                    final String rootMsg = rootCause.toString();
+                    final String fullTrace = sw.toString();
+
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
-                            splashStatus.setText("Ошибка: " + e.getMessage());
+                            // Показываем на экране суть ошибки
+                            String msg = "ОШИБКА PYTHON:\n" + rootMsg;
+                            
+                            // Если текст слишком длинный, обрезаем для экрана
+                            if (msg.length() > 400) {
+                                msg = msg.substring(0, 400) + "...\n\n(Смотрите Logcat)";
+                            }
+                            
+                            splashStatus.setText(msg);
+                            Log.e(TAG, "Detailed Traceback:\n" + fullTrace);
                         }
                     });
                 }
@@ -135,7 +163,7 @@ public class MainActivity extends AppCompatActivity {
                         final int step = i;
                         runOnUiThread(new Runnable() {
                             @Override public void run() {
-                                if (step > 3) splashStatus.setText("Почти готово…");
+                                if (step > 5) splashStatus.setText("Почти готово…");
                             }
                         });
                         try { Thread.sleep(300); } catch (InterruptedException e) { return; }
@@ -143,7 +171,10 @@ public class MainActivity extends AppCompatActivity {
                 }
                 runOnUiThread(new Runnable() {
                     @Override public void run() {
-                        splashStatus.setText("Не удалось запустить сервер. Перезапустите.");
+                        // Если мы дошли сюда, значит сервер не запустился за 18 секунд
+                        if (splashStatus.getText().toString().contains("Почти готово")) {
+                            splashStatus.setText("Сервер не отвечает. Перезапустите приложение.");
+                        }
                     }
                 });
             }
