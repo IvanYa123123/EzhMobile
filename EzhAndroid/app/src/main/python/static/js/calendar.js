@@ -41,6 +41,9 @@ function _sortItemsByTime(a, b) {
 }
 
 async function renderCalendar() {
+    const calDir = window._calDir;
+    window._calDir = null;
+
     const cal = document.getElementById("calendar");
     if (!cal) return;
     cal.innerHTML = "";
@@ -54,16 +57,16 @@ async function renderCalendar() {
 
     // Направленная анимация
     cal.className = 'calendar-grid flex-grow-1';
-    if (window._calDir === 'right') cal.classList.add('slide-right');
-    else if (window._calDir === 'left') cal.classList.add('slide-left');
+    if (calDir === 'right') cal.classList.add('slide-right');
+    else if (calDir === 'left') cal.classList.add('slide-left');
     else cal.classList.add('fade-in');
-    window._calDir = null;
 
     if (!currentGroup || cachedSchedule.length === 0) {
         cal.innerHTML = `<div class="empty-state empty-state-wide">
             <div class="empty-state-icon">📚</div>
             <div class="empty-state-title">${currentGroup ? 'Расписание не загружено' : 'Выберите группу'}</div>
         </div>`;
+        if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
         return;
     }
 
@@ -85,10 +88,10 @@ async function renderCalendar() {
         let customAll = getCustomItemsForDate(dateStr);
         let eventItems = customAll.filter(x => x.is_event);
         let customPairs = customAll.filter(x => !x.is_event);
-        
+
         let pairsCount = pairItems.length + customPairs.length;
         let eventsCount = eventItems.length;
-        
+
         let cardsHtml = '';
         let allItems = eventItems.concat(customPairs).concat(pairItems).sort(_sortItemsByTime);
         allItems.forEach(item => {
@@ -99,7 +102,7 @@ async function renderCalendar() {
         htmlParts.push(`
             <div class="day-col ${isTodayClass}" id="day-col-${dateStr}">
                 <div class="day-header"><span class="day-nav-center">${displayDate}</span></div>
-                
+
                 <div class="day-schedule-wrap mb-2">
                     ${(pairsCount + eventsCount) > 0 ? `
                         <div class="schedule-summary shadow-sm" onclick="toggleSchedule('${dateStr}')">
@@ -113,7 +116,7 @@ async function renderCalendar() {
                     ` : `<div class="empty-state-inline">☕ Свободно</div>`}
                     <button type="button" class="btn btn-sm btn-outline-success w-100 mt-1" style="font-size: 11px;" onclick="event.stopPropagation(); openCustomScheduleModal('${dateStr}')">+ Событие</button>
                 </div>
-                
+
                 <div class="day-tasks-wrap mt-2">
                     <div id="tasks-${dateStr}" class="mb-1"></div>
                     <div id="expand-btn-wrap-${dateStr}" style="display:none; text-align:center; margin-top:4px;">
@@ -152,9 +155,10 @@ async function renderCalendar() {
 
     if (typeof _layoutScheduleNotes === 'function') _layoutScheduleNotes();
 
-    if (typeof renderFriendsCalendar === 'function') renderFriendsCalendar();
+    if (typeof renderFriendsCalendar === 'function') renderFriendsCalendar(calDir);
     if (typeof renderTeachersCalendars === 'function') renderTeachersCalendars();
     if (typeof renderMiniCalendar === 'function') renderMiniCalendar();
+    if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
     if (typeof checkOnboarding === 'function') checkOnboarding();
 }
 
@@ -173,7 +177,6 @@ async function renderDayView() {
     let customPairs = customAll.filter(x => !x.is_event);
     let allItems = eventItems.concat(customPairs).concat(pairItems).sort(_sortItemsByTime);
 
-    // Загружаем заметки конкретно на этот день
     let dayTasks = [];
     try {
         dayTasks = await apiLoadTasks(window.expandedDayDateStr, window.expandedDayDateStr);
@@ -181,7 +184,6 @@ async function renderDayView() {
 
     let html = '';
 
-    // 1. Блок пар и событий
     if (allItems.length === 0) {
         html += `<div class="text-center text-muted small mb-3">Пар и событий нет.</div>`;
     } else {
@@ -190,7 +192,7 @@ async function renderDayView() {
             let typeBadge = isEvent ? 'Событие' : (item.type_name || 'Пара');
             let bgColor = isEvent ? 'var(--custom-pair-color)' : (item.is_custom ? 'var(--custom-pair-color)' : 'var(--accent)');
             let editBtn = item.is_custom ? `<button class="btn btn-sm btn-link text-secondary p-0 ms-2" onclick="openCustomScheduleModal('${item.date}', ${item.custom_id})">✏️</button>` : '';
-            
+
             html += `
                 <div class="schedule-item shadow-sm mb-3" style="border-left: 4px solid ${bgColor}; padding: 12px;">
                     <div class="d-flex justify-content-between mb-2">
@@ -207,7 +209,6 @@ async function renderDayView() {
         });
     }
 
-    // 2. Блок заметок (полный текст)
     html += `<div class="mt-4 mb-2 fw-bold text-secondary border-bottom pb-1">📝 Заметки на день</div>`;
     if (dayTasks.length === 0) {
         html += `<div class="text-center text-muted small mb-3">Заметок нет.</div>`;
@@ -227,7 +228,6 @@ async function renderDayView() {
         });
     }
 
-    // 3. Форма добавления
     html += `
         <div class="mt-4 p-3 bg-light rounded border">
             <div class="fw-bold mb-2 small text-secondary">ДОБАВИТЬ НА ЭТОТ ДЕНЬ</div>
@@ -246,14 +246,14 @@ async function createDayViewTask(dateStr) {
     const textarea = document.getElementById('dayViewNewNote');
     const text = textarea.value.trim();
     if (!text) return;
-    
-    textarea.value = ''; // Очищаем сразу
+
+    textarea.value = '';
     try {
         let data = await apiCreateTask({date: dateStr, text: text, status: 'green'});
         taskDatesSet.add(dateStr);
         if (typeof refreshMiniCalEvents === 'function') refreshMiniCalEvents();
         if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
-        await renderDayView(); // Перерисовываем день
+        await renderDayView();
     } catch (e) {
         alert("Не удалось создать заметку");
         console.error(e);
@@ -267,4 +267,43 @@ function navigateDay(offset) {
     target.setDate(target.getDate() + offset);
     window.expandedDayDateStr = getLocalDateStr(target);
     renderDayView();
+}
+
+// ============================================================
+//  ИНДИКАТОР СВЕЖЕСТИ РАСПИСАНИЯ
+// ============================================================
+
+function _formatAgo(ms) {
+    const diff = Date.now() - ms;
+    if (diff < 60 * 1000) return 'только что';
+    const min = Math.floor(diff / 60000);
+    if (min < 60) return `${min} ${plural(min, 'минуту', 'минуты', 'минут')} назад`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} ${plural(h, 'час', 'часа', 'часов')} назад`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `${d} ${plural(d, 'день', 'дня', 'дней')} назад`;
+    return 'давно';
+}
+
+function renderSyncFreshness() {
+    const el = document.getElementById('syncFreshness');
+    if (!el) return;
+
+    const group    = (document.getElementById('groupSelect')?.value || '').trim();
+    const subgroup = document.getElementById('subgroupSelect')?.value || '0';
+    if (!group) { el.textContent = ''; return; }
+
+    const ts = (typeof getSyncTime === 'function') ? getSyncTime(group, subgroup) : null;
+    if (!ts) {
+        el.innerHTML = `<span class="sync-fresh sync-fresh-cache" title="Расписание загружено из локального кэша">📦 из кэша</span>`;
+        return;
+    }
+
+    const age = Date.now() - ts;
+    const isFresh = age < 6 * 60 * 60 * 1000;
+    const cls = isFresh ? 'sync-fresh-ok' : 'sync-fresh-cache';
+    const icon = isFresh ? '🔄' : '📦';
+    const hint = isFresh ? 'Синхронизировано недавно' : 'Давно не синхронизировано';
+
+    el.innerHTML = `<span class="sync-fresh ${cls}" title="${hint}">${icon} ${_formatAgo(ts)}</span>`;
 }
