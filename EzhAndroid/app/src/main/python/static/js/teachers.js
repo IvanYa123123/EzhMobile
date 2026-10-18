@@ -1,14 +1,81 @@
+// Расписание преподавателей.
+
 let teachersAllList = null;
 let trackedTeachers = [];
 let teacherSchedulesCache = {};
 let _teacherInitDone = false;
 let _currentTeacherIndex = 0;
 
+let _teachersOrderOverride = null;
+let _teachersGeneration = 0;
+
+// ============================================================
+//  ПОРЯДОК
+// ============================================================
+
+function loadTeachersOrder() {
+    if (Array.isArray(_teachersOrderOverride)) return _teachersOrderOverride.slice();
+    try {
+        const raw = localStorage.getItem('teachersOrder');
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+}
+
+function saveTeachersOrder() {
+    const ids = trackedTeachers.map(t => t.id);
+    _teachersOrderOverride = ids.slice();
+    try {
+        localStorage.setItem('teachersOrder', JSON.stringify(ids));
+    } catch (e) {
+        console.warn('[teachers] не удалось записать порядок в localStorage:', e);
+    }
+}
+
+function applyTeachersOrder() {
+    const order = loadTeachersOrder();
+    if (!Array.isArray(order) || order.length === 0) return;
+    trackedTeachers.sort((a, b) => {
+        let ai = order.indexOf(a.id); if (ai === -1) ai = Number.MAX_SAFE_INTEGER;
+        let bi = order.indexOf(b.id); if (bi === -1) bi = Number.MAX_SAFE_INTEGER;
+        return ai - bi;
+    });
+}
+
+// ============================================================
+//  ПРОКРУТКА И ПЕРЕСТАНОВКА
+// ============================================================
+
 function rotateTeachersRight() {
     if (!Array.isArray(trackedTeachers) || trackedTeachers.length < 2) return;
     _currentTeacherIndex = (_currentTeacherIndex + 1) % trackedTeachers.length;
     renderTeachersCalendars();
 }
+
+function moveTeacherUp() {
+    if (!Array.isArray(trackedTeachers) || trackedTeachers.length < 2) return;
+    if (_currentTeacherIndex <= 0) return;
+    _teachersGeneration++;
+    const i = _currentTeacherIndex;
+    [trackedTeachers[i - 1], trackedTeachers[i]] = [trackedTeachers[i], trackedTeachers[i - 1]];
+    _currentTeacherIndex--;
+    saveTeachersOrder();
+    renderTeachersCalendars();
+}
+
+function moveTeacherDown() {
+    if (!Array.isArray(trackedTeachers) || trackedTeachers.length < 2) return;
+    if (_currentTeacherIndex >= trackedTeachers.length - 1) return;
+    _teachersGeneration++;
+    const i = _currentTeacherIndex;
+    [trackedTeachers[i], trackedTeachers[i + 1]] = [trackedTeachers[i + 1], trackedTeachers[i]];
+    _currentTeacherIndex++;
+    saveTeachersOrder();
+    renderTeachersCalendars();
+}
+
+// ============================================================
+//  INIT
+// ============================================================
 
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
@@ -24,20 +91,27 @@ async function initTeachers() {
     fetchAllTeacherSchedules().then(() => renderTeachersCalendars());
 }
 
-async function ensureAllTeachersLoaded() {
-    if (teachersAllList) return teachersAllList;
-    try {
-        const resp = await fetch('/api/teachers');
-        teachersAllList = await resp.json();
-    } catch (e) { teachersAllList = []; }
-    return teachersAllList;
-}
+// ============================================================
+//  FETCH
+// ============================================================
 
 async function fetchTrackedTeachers() {
+    const myGen = ++_teachersGeneration;
+
+    let list = [];
     try {
         const resp = await fetch('/api/tracked_teachers');
-        trackedTeachers = await resp.json();
-    } catch (e) { trackedTeachers = []; }
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        list = await resp.json();
+    } catch (e) {
+        console.error('[teachers] load tracked failed', e);
+        list = [];
+    }
+
+    if (myGen !== _teachersGeneration) return;
+
+    trackedTeachers = Array.isArray(list) ? list : [];
+    applyTeachersOrder();
     if (_currentTeacherIndex >= trackedTeachers.length) _currentTeacherIndex = 0;
 }
 
@@ -49,52 +123,248 @@ async function fetchAllTeacherSchedules() {
 async function loadTeacherSchedule(slug, force) {
     if (teacherSchedulesCache[slug] && !force) return teacherSchedulesCache[slug];
     try {
-        const resp = await fetch('/api/teacher_schedule?slug=' + encodeURIComponent(slug) + (force ? '&force=1' : ''));
-        teacherSchedulesCache[slug] = await resp.json();
+        const url = '/api/teacher_schedule?slug=' + encodeURIComponent(slug) + (force ? '&force=1' : '');
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        teacherSchedulesCache[slug] = Array.isArray(data) ? data : [];
         return teacherSchedulesCache[slug];
-    } catch (e) { teacherSchedulesCache[slug] = []; return []; }
+    } catch (e) {
+        console.error('[teachers] schedule load failed', slug, e);
+        teacherSchedulesCache[slug] = [];
+        return [];
+    }
 }
+
+// ============================================================
+//  МОДАЛКА ДОБАВЛЕНИЯ
+// ============================================================
 
 async function showAddTeacherModal() {
-    document.getElementById('teacherAddInput').value = '';
-    document.getElementById('teacherAddSuggestions').innerHTML = '';
-    new bootstrap.Modal(document.getElementById('addTeacherModal')).show();
+    const inp = document.getElementById('teacherAddInput');
+    const hint = document.getElementById('teacherAddHint');
+    const sugg = document.getElementById('teacherAddSuggestions');
+    if (inp) inp.value = '';
+    if (hint) hint.textContent = 'Загрузка списка…';
+    if (sugg) sugg.innerHTML = '';
+
+    const modalEl = document.getElementById('addTeacherModal');
+    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    modal.show();
+
     await ensureAllTeachersLoaded();
     renderTeacherSuggestions('');
+
+    setTimeout(() => { if (inp) inp.focus(); }, 200);
 }
 
-function onTeacherSearchInput(value) { renderTeacherSuggestions(value); }
+function onTeacherSearchFocus() {
+    if (!teachersAllList) return;
+    const inp = document.getElementById('teacherAddInput');
+    renderTeacherSuggestions(inp ? inp.value : '');
+}
+
+function onTeacherSearchInput(value) {
+    renderTeacherSuggestions(value);
+}
+
+async function ensureAllTeachersLoaded() {
+    if (teachersAllList) return teachersAllList;
+    try {
+        const resp = await fetch('/api/teachers');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        teachersAllList = await resp.json();
+    } catch (e) {
+        console.error('[teachers] load all failed', e);
+        teachersAllList = [];
+    }
+    return teachersAllList;
+}
+
+// ------------------------------------------------------------
+//  УМНЫЕ ПОДСКАЗКИ:
+//   • если поле пустое — сначала показываем преподавателей,
+//     которые уже ведут пары у вашей группы (по фамилии);
+//   • если запрос короткий (<2 символов) — «Введите минимум 2»;
+//   • иначе — обычный поиск по подстроке.
+// ------------------------------------------------------------
+
+function getMyGroupSurnames() {
+    const surnames = new Set();
+    if (!Array.isArray(cachedSchedule)) return surnames;
+    cachedSchedule.forEach(item => {
+        const t = (item.teacher || '').trim();
+        if (!t) return;
+        const first = t.split(/\s+/)[0];
+        if (first && first.length >= 3) surnames.add(first.toLowerCase());
+    });
+    return surnames;
+}
 
 function renderTeacherSuggestions(query) {
     const container = document.getElementById('teacherAddSuggestions');
-    if (!teachersAllList || teachersAllList.length === 0) { container.innerHTML = '<div class="text-center small">Загрузка…</div>'; return; }
+    const hint = document.getElementById('teacherAddHint');
+    if (!container) return;
+
+    if (!teachersAllList || teachersAllList.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted small py-3">Список преподавателей загружается…</div>';
+        if (hint) hint.textContent = '';
+        return;
+    }
+
     const q = (query || '').trim().toLowerCase();
     const trackedSlugs = new Set(trackedTeachers.map(t => t.slug));
-    let filtered = q.length < 2 ? teachersAllList.slice(0, 30) : teachersAllList.filter(t => t.name.toLowerCase().includes(q)).slice(0, 50);
-    container.innerHTML = filtered.map(t => {
+
+    let filtered;
+    let mode;
+
+    if (!q) {
+        const mySurnames = getMyGroupSurnames();
+        if (mySurnames.size > 0) {
+            filtered = teachersAllList.filter(t => {
+                const first = (t.name || '').split(/\s+/)[0].toLowerCase();
+                return first && mySurnames.has(first);
+            });
+            mode = 'mine';
+            if (filtered.length === 0) {
+                filtered = teachersAllList.slice(0, 30);
+                mode = 'all';
+            }
+        } else {
+            filtered = teachersAllList.slice(0, 30);
+            mode = 'all';
+        }
+    } else if (q.length < 2) {
+        filtered = [];
+        mode = 'short';
+    } else {
+        filtered = teachersAllList.filter(t => (t.name || '').toLowerCase().includes(q)).slice(0, 50);
+        mode = 'search';
+    }
+
+    if (hint) {
+        if (mode === 'mine') hint.textContent = `Ваши преподаватели (${filtered.length}). Начните вводить фамилию — найдём среди всех.`;
+        else if (mode === 'search') hint.textContent = `Найдено: ${filtered.length}`;
+        else if (mode === 'short') hint.textContent = 'Введите минимум 2 символа';
+        else hint.textContent = `Всего: ${teachersAllList.length}. Показаны первые ${filtered.length}. Начните вводить фамилию для поиска.`;
+    }
+
+    if (filtered.length === 0) {
+        container.innerHTML = mode === 'short'
+            ? '<div class="text-center text-muted small py-3">—</div>'
+            : '<div class="text-center text-muted small py-3">Ничего не найдено</div>';
+        return;
+    }
+
+    const parts = [];
+    filtered.forEach(t => {
         const isTracked = trackedSlugs.has(t.slug);
-        return `<div class="teacher-suggestion ${isTracked ? 'disabled' : ''}" ${isTracked ? '' : `onclick="addTrackedTeacher('${escapeJsString(t.slug)}', '${escapeJsString(t.name)}')"`}><span>${escapeHtml(t.name)}</span>${isTracked ? '<span class="badge bg-secondary">добавлен</span>' : '<span class="teacher-suggestion-arrow">+</span>'}</div>`;
-    }).join('');
+        const cls = isTracked ? ' teacher-suggestion-disabled' : '';
+        const clickAttr = isTracked ? '' : `onclick="addTrackedTeacher('${escapeJsString(t.slug)}', '${escapeJsString(t.name)}')"`;
+        const badge = isTracked ? '<span class="teacher-suggestion-badge">добавлен</span>' : '<span class="teacher-suggestion-arrow">+</span>';
+        parts.push(`<div class="teacher-suggestion${cls}" ${clickAttr}><span class="teacher-suggestion-name">${escapeHtml(t.name)}</span>${badge}</div>`);
+    });
+    container.innerHTML = parts.join('');
 }
 
 async function addTrackedTeacher(slug, name) {
+    let newId = null;
     try {
-        await fetch('/api/tracked_teachers', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, slug}) });
-    } catch (e) { return alert('Не удалось добавить'); }
-    bootstrap.Modal.getInstance(document.getElementById('addTeacherModal')).hide();
+        const resp = await fetch('/api/tracked_teachers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, slug})
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (data && data.id) newId = data.id;
+    } catch (e) {
+        console.error('[teachers] add failed', e);
+        alert('Не удалось добавить преподавателя');
+        return;
+    }
+
+    const modalEl = document.getElementById('addTeacherModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+
     await fetchTrackedTeachers();
+
+    if (newId !== null) {
+        const order = loadTeachersOrder() || [];
+        if (Array.isArray(order) && !order.includes(newId)) {
+            order.push(newId);
+            _teachersOrderOverride = order.slice();
+            try { localStorage.setItem('teachersOrder', JSON.stringify(order)); } catch (e) {}
+        }
+    }
+
     renderTeachersCalendars();
     loadTeacherSchedule(slug).then(() => renderTeachersCalendars());
+
+    if (typeof showUpdateNotification === 'function') showUpdateNotification(`Добавлен: ${name}`);
 }
 
 async function deleteTrackedTeacher(id) {
-    if (!confirm(`Убрать преподавателя?`)) return;
+    const teacher = trackedTeachers.find(t => t.id === id);
+    if (!teacher) return;
+    if (!confirm(`Убрать преподавателя «${teacher.name}» из списка?`)) return;
+
     try {
-        await fetch('/api/tracked_teachers/' + id, {method: 'DELETE'});
-        if (_currentTeacherIndex >= trackedTeachers.length - 1 && _currentTeacherIndex > 0) _currentTeacherIndex--;
-        await fetchTrackedTeachers();
-        renderTeachersCalendars();
-    } catch (e) {}
+        const resp = await fetch('/api/tracked_teachers/' + id, {method: 'DELETE'});
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    } catch (e) {
+        console.error('[teachers] delete failed', e);
+        alert('Не удалось удалить');
+        return;
+    }
+
+    delete teacherSchedulesCache[teacher.slug];
+    if (_currentTeacherIndex >= trackedTeachers.length - 1 && _currentTeacherIndex > 0) _currentTeacherIndex--;
+
+    const order = loadTeachersOrder();
+    if (Array.isArray(order)) {
+        const idx = order.indexOf(id);
+        if (idx !== -1) {
+            order.splice(idx, 1);
+            _teachersOrderOverride = order.slice();
+            try { localStorage.setItem('teachersOrder', JSON.stringify(order)); } catch (e) {}
+        }
+    }
+
+    await fetchTrackedTeachers();
+    renderTeachersCalendars();
+}
+
+// ============================================================
+//  ОБЩИЕ ПАРЫ (с моей группой)
+// ============================================================
+
+function _countCommonPairsForTeacher(teacherDayPairs, myDaySchedule) {
+    const myGroup = (document.getElementById('groupSelect')?.value || '').trim().toUpperCase();
+    if (!myGroup || !teacherDayPairs.length || !myDaySchedule.length) return 0;
+
+    let count = 0;
+    teacherDayPairs.forEach(p => {
+        if (!Array.isArray(p.groups)) return;
+        const hasMyGroup = p.groups.some(g => String(g).toUpperCase() === myGroup);
+        if (!hasMyGroup) return;
+        const timeMatch = myDaySchedule.find(m => m.time_range === p.time_range);
+        if (timeMatch) count++;
+    });
+    return count;
+}
+
+// ============================================================
+//  РЕНДЕР КАЛЕНДАРЯ ПРЕПОДАВАТЕЛЯ (одного)
+// ============================================================
+
+function toggleTeacherPairDetails(cardEl) {
+    if (!cardEl) return;
+    const details = cardEl.querySelector('.teacher-pair-details');
+    if (!details) return;
+    details.hidden = !details.hidden;
+    cardEl.classList.toggle('is-details-open', !details.hidden);
 }
 
 function renderTeachersCalendars() {
@@ -107,6 +377,7 @@ function renderTeachersCalendars() {
         return;
     }
 
+    if (_currentTeacherIndex >= trackedTeachers.length) _currentTeacherIndex = 0;
     const teacher = trackedTeachers[_currentTeacherIndex];
     const pairs = teacherSchedulesCache[teacher.slug] || [];
     const isLoading = !(teacher.slug in teacherSchedulesCache);
@@ -115,12 +386,17 @@ function renderTeachersCalendars() {
     const wrapper = document.createElement('div');
     wrapper.className = 'teacher-wrapper bg-white rounded shadow-sm px-2 pb-2 pt-1';
 
+    const isFirst = _currentTeacherIndex === 0;
+    const isLast  = _currentTeacherIndex === trackedTeachers.length - 1;
+
     const header = document.createElement('div');
     header.className = 'fw-bold text-primary mb-2 ps-1 pt-1 teacher-header-row d-flex align-items-center justify-content-between';
     header.innerHTML = `
         <span>🎓 ${escapeHtml(teacher.name)}</span>
-        <div>
-            <span class="text-muted small me-2">${_currentTeacherIndex + 1} / ${trackedTeachers.length}</span>
+        <div class="d-flex align-items-center gap-1">
+            <span class="text-muted small me-1">${_currentTeacherIndex + 1} / ${trackedTeachers.length}</span>
+            <button class="btn btn-sm btn-link text-secondary p-0 text-decoration-none" style="width: 20px;" title="Выше" onclick="moveTeacherUp()" ${isFirst ? 'disabled' : ''}>↑</button>
+            <button class="btn btn-sm btn-link text-secondary p-0 me-1 text-decoration-none" style="width: 20px;" title="Ниже" onclick="moveTeacherDown()" ${isLast ? 'disabled' : ''}>↓</button>
             <button class="btn btn-sm btn-link text-primary p-0 me-2 text-decoration-none" onclick="teacherRefresh('${escapeJsString(teacher.slug)}')">🔄</button>
             <button class="btn btn-sm btn-link text-danger p-0 text-decoration-none" onclick="deleteTrackedTeacher(${teacher.id})">🗑️</button>
         </div>`;
@@ -139,11 +415,42 @@ function renderTeachersCalendars() {
         const d = new Date(currentBaseDate); d.setDate(d.getDate() + i);
         const dateStr = getLocalDateStr(d);
         const displayDate = d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' });
-        const dayPairs = pairs.filter(p => p.date === dateStr);
+        const dayPairs = pairs.filter(p => p.date === dateStr).sort((a, b) => (a.n || 0) - (b.n || 0));
+        const myDaySchedule = cachedSchedule.filter(p => p.date === dateStr);
         const isToday = dateStr === realTodayStr ? ' day-today' : '';
         let html = `<div class="teacher-col${isToday}"><div class="teacher-day-header">${displayDate}</div>`;
-        if (dayPairs.length === 0) html += '<div class="text-muted text-center mt-2" style="font-size:0.8em;">—</div>';
-        else dayPairs.forEach(p => { html += `<div class="teacher-pair-card" onclick="toggleTeacherPairDetails(this)"><div class="teacher-pair-head"><strong class="text-primary">${escapeHtml(p.time_range)}</strong></div><div class="teacher-pair-details" hidden><div>${escapeHtml(p.lesson)}</div></div></div>`; });
+
+        if (dayPairs.length > 0) {
+            // Бейдж общих пар — общее количество за день
+            const commonCount = _countCommonPairsForTeacher(dayPairs, myDaySchedule);
+            if (commonCount > 0) {
+                html += `<div class="shared-class shared-common fw-bold mb-1" style="font-size:0.7em;">🤝 ${commonCount} ${plural(commonCount, 'общая пара', 'общие пары', 'общих пар')}</div>`;
+            }
+            dayPairs.forEach(p => {
+                const badge = p.type_name
+                    ? `<span class="badge bg-secondary ms-1" style="font-size:0.6em;">${escapeHtml(p.type_name)}</span>`
+                    : '';
+                const locHtml = p.location ? `<div class="teacher-pair-location">🚪 ${escapeHtml(p.location)}</div>` : '';
+                const groupsHtml = (p.groups && p.groups.length)
+                    ? `<div class="text-muted" style="font-size:0.85em;">${p.groups.map(g => escapeHtml(g)).join(', ')}</div>`
+                    : '';
+
+                html += `
+                    <div class="teacher-pair-card" onclick="toggleTeacherPairDetails(this)" title="Показать/скрыть подробности">
+                        <div class="teacher-pair-head">
+                            <strong class="text-primary">${escapeHtml(p.time_range)}</strong>${badge}
+                            <span class="teacher-pair-toggle">▼</span>
+                        </div>
+                        ${locHtml}
+                        <div class="teacher-pair-details" hidden>
+                            <div>${escapeHtml(p.lesson)}</div>
+                            ${groupsHtml}
+                        </div>
+                    </div>`;
+            });
+        } else {
+            html += '<div class="text-muted text-center mt-2" style="font-size:0.8em;">—</div>';
+        }
         html += `</div>`;
         dayParts.push(html);
     }
@@ -152,12 +459,8 @@ function renderTeachersCalendars() {
     container.appendChild(wrapper);
 }
 
-function toggleTeacherPairDetails(cardEl) {
-    const details = cardEl.querySelector('.teacher-pair-details');
-    if (details) details.hidden = !details.hidden;
-}
-
 async function teacherRefresh(slug) {
     await loadTeacherSchedule(slug, true);
     renderTeachersCalendars();
+    if (typeof showUpdateNotification === 'function') showUpdateNotification('Расписание преподавателя обновлено');
 }
