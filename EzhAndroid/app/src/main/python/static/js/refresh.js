@@ -1,15 +1,4 @@
 // Принудительное обновление расписания с сервера СевГУ.
-//
-// Порядок работы (важно!):
-//   1. showGlobalLoader() вызывается ПЕРВЫМ, до любых await.
-//   2. Каждый шаг пишет в лоадер свой текст через setLoaderText().
-//   3. Любая ошибка — console.error + понятный тост.
-//   4. В finally лоадер скрывается, кнопка разблокируется.
-//
-// Защита от нажатий. Флаг _refreshInFlight предотвращает
-// параллельный запуск: если предыдущий refresh ещё в работе,
-// повторное нажатие игнорируется. Без этого бэкенд на лимите
-// 10/min возвращал HTTP 429.
 
 let _refreshInFlight = false;
 
@@ -45,14 +34,11 @@ async function manualRefresh() {
             cachedSchedule = applyTimeFix(fresh);
 
             // Синхронизация прошла успешно — обновляем таймер свежести
-            // в localStorage и сразу перерисовываем индикатор.
             if (typeof saveSyncTime === 'function') {
                 saveSyncTime(group, subgroup);
             }
         } else {
-            // Пустой ответ может значить: сработала защита от затирания
-            // (сервер вернул старый кэш), либо у группы реально нет пар.
-            // Берём из локального кэша.
+            // Пустой ответ — берём из локального кэша
             setLoaderText('📦 Загружаем из локального кэша...');
             const fallback = await apiLoadSchedule(group, subgroup);
             cachedSchedule = applyTimeFix(fallback);
@@ -72,7 +58,7 @@ async function manualRefresh() {
         await updateLabsCache();
         await refreshTaskDates();
 
-        // --- 4. Друзья в фоне (не блокируем UI) ---
+        // --- 4. Друзья в фоне (форс) ---
         if (typeof syncFriendsSchedules === 'function') {
             syncFriendsSchedules(true).catch(e => console.error('[refresh] friends sync failed', e));
         }
@@ -93,8 +79,6 @@ async function manualRefresh() {
         console.error('[refresh] ERROR:', e);
         let msg = '❌ Не удалось обновить расписание';
 
-        // HTTP-статус прилетает в поле .status (см. api.js не пробрасывает
-        // статус — ловим по тексту сообщения "HTTP 429 for ...").
         const statusFromMsg = (() => {
             const m = /HTTP (\d+)/.exec(e && e.message ? e.message : '');
             return m ? parseInt(m[1], 10) : null;
