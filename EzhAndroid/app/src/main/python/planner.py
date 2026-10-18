@@ -1,7 +1,6 @@
 import requests
 import urllib3
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -14,10 +13,8 @@ class SevSUPlanner:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
-        
-        # Фиксы для Android
-        self.session.trust_env = False 
-        self.session.verify = False 
+        self.session.trust_env = False
+        self.session.verify = False
 
         try:
             from requests.adapters import HTTPAdapter
@@ -30,8 +27,8 @@ class SevSUPlanner:
             )
             adapter = HTTPAdapter(
                 max_retries=retry,
-                pool_connections=16,
-                pool_maxsize=16,
+                pool_connections=4,
+                pool_maxsize=4,
                 pool_block=False,
             )
             self.session.mount("https://", adapter)
@@ -74,7 +71,7 @@ class SevSUPlanner:
     def get_schedule_for_week(self, group_name: str, week: int) -> list:
         params = {"v": "6.2", "section": "0", "group": group_name, "week": week}
         try:
-            response = self.session.get(self.api_url, params=params, timeout=15)
+            response = self.session.get(self.api_url, params=params, timeout=20)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("ok"):
@@ -83,20 +80,12 @@ class SevSUPlanner:
             print(f"Schedule fetch error week {week}: {e}")
         return []
 
-    def _fetch_weeks_parallel(self, group_name: str, weeks) -> dict:
-        """Параллельно тянет расписание для списка недель."""
+    def _fetch_weeks_sequential(self, group_name: str, weeks) -> dict:
+        """Последовательная загрузка. Параллельные потоки в Chaquopy/Android
+        нестабильны — по коммиту 10f4015."""
         results = {}
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            future_to_week = {
-                ex.submit(self.get_schedule_for_week, group_name, w): w
-                for w in weeks
-            }
-            for fut in as_completed(future_to_week):
-                w = future_to_week[fut]
-                try:
-                    results[w] = fut.result()
-                except Exception:
-                    results[w] = []
+        for w in weeks:
+            results[w] = self.get_schedule_for_week(group_name, w)
         return results
 
     def get_semester_schedule(self, group_name: str, target_subgroup: str = "0", max_weeks: int = 25) -> list:
@@ -110,7 +99,7 @@ class SevSUPlanner:
         even_template_len = 0
 
         all_weeks = list(range(1, max_weeks + 1))
-        weeks_data = self._fetch_weeks_parallel(group_name, all_weeks)
+        weeks_data = self._fetch_weeks_sequential(group_name, all_weeks)
 
         target_is_all = (target_subgroup == "0")
 
