@@ -16,7 +16,9 @@
                 var raw = localStorage.getItem('customTheme');
                 if (raw) {
                     var d = JSON.parse(raw);
-                    if (d && d.colors) { for (var k in d.colors) document.documentElement.style.setProperty(k, d.colors[k]); }
+                    if (d && d.colors) {
+                        for (var k in d.colors) document.documentElement.style.setProperty(k, d.colors[k]);
+                    }
                 }
             }
         } catch (e) {}
@@ -30,6 +32,8 @@
     <link href="/static/css/fixes.css?v={{ app_version }}" rel="stylesheet">
     <link href="/static/css/hedgehog.css?v={{ app_version }}" rel="stylesheet">
     <link href="/static/css/mobile.css?v={{ app_version }}" rel="stylesheet">
+    <link href="/static/css/animations.css?v={{ app_version }}" rel="stylesheet">
+    <link href="/static/css/teachers.css?v={{ app_version }}" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body data-mobile-tab="schedule">
@@ -73,7 +77,6 @@
                     <span id="ezh-logo" style="font-size: 2.2rem; line-height: 0.5; margin-right: 0px; margin-left: -5px; display: inline-block;">🦔</span>
                     <span>дневник</span>
                 </h5>
-                <div class="version-label">v{{ app_version }}</div>
             </div>
             <div class="col-md-3 col-6">
                 <div class="input-group input-group-sm">
@@ -83,7 +86,9 @@
             </div>
             <div class="col-md-2 col-12">
                 <select id="subgroupSelect" class="form-select form-select-sm" onchange="fetchSemesterData()">
-                    <option value="0">Все подгруппы</option><option value="1">1 подгруппа</option><option value="2">2 подгруппа</option>
+                    <option value="0">Все подгруппы</option>
+                    <option value="1">1 подгруппа</option>
+                    <option value="2">2 подгруппа</option>
                 </select>
             </div>
             <div class="col-md-5 col-12 d-flex align-items-center justify-content-end gap-2 flex-wrap">
@@ -280,7 +285,7 @@
 </div>
 
 <div class="modal fade" id="settingsModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width: 560px;">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width: 620px;">
     <div class="modal-content border-0 shadow settings-modal">
       <div class="modal-header py-3">
         <h5 class="modal-title fw-bold d-flex align-items-center gap-2 mb-0"><span style="font-size: 1.2em;">⚙️</span><span>Настройки</span></h5>
@@ -296,6 +301,8 @@
         <div class="settings-group">
           <div class="settings-group-title">🧩 Виджеты</div>
           <label class="settings-row" for="settingsToggleSeparateFriendsTeachers"><span class="settings-row-label">Раздельные преподаватели и друзья</span><input class="form-check-input" type="checkbox" id="settingsToggleSeparateFriendsTeachers" onchange="saveSettingsFromUI()"></label>
+          <label class="settings-row" for="settingsToggleFriendsSection"><span class="settings-row-label">Секция «Друзья»</span><input class="form-check-input" type="checkbox" id="settingsToggleFriendsSection" onchange="saveSettingsFromUI()"></label>
+          <label class="settings-row" for="settingsToggleTeachersSection"><span class="settings-row-label">Секция «Преподаватели»</span><input class="form-check-input" type="checkbox" id="settingsToggleTeachersSection" onchange="saveSettingsFromUI()"></label>
           <label class="settings-row" for="settingsToggleWidgetMiniCal"><span class="settings-row-label">Мини-календарь</span><input class="form-check-input" type="checkbox" id="settingsToggleWidgetMiniCal" onchange="saveSettingsFromUI()"></label>
           <label class="settings-row" for="settingsToggleWidgetGlobal"><span class="settings-row-label">Остаток пар</span><input class="form-check-input" type="checkbox" id="settingsToggleWidgetGlobal" onchange="saveSettingsFromUI()"></label>
           <label class="settings-row" for="settingsToggleWidgetLabs"><span class="settings-row-label">Лабораторные</span><input class="form-check-input" type="checkbox" id="settingsToggleWidgetLabs" onchange="saveSettingsFromUI()"></label>
@@ -311,6 +318,8 @@
         <div class="settings-group">
           <div class="settings-group-title">🔔 Уведомления</div>
           <label class="settings-row" for="settingsNotifEnabled"><span class="settings-row-label">Включить уведомления</span><input class="form-check-input" type="checkbox" id="settingsNotifEnabled" onchange="handleNotificationsToggle(this)"></label>
+          <div class="settings-row-inline"><span class="settings-row-label">За сколько</span><div class="d-flex gap-2"><input type="number" min="1" max="60" class="form-control form-control-sm" id="settingsNotifAdvance" style="max-width: 80px;" onchange="saveSettingsFromUI()"><select class="form-select form-select-sm" id="settingsNotifUnit" style="max-width: 120px;" onchange="saveSettingsFromUI()"><option value="min">минут</option><option value="hour">часов</option><option value="day">дней</option><option value="week">недель</option></select></div></div>
+          <div class="settings-hint-box" id="settingsNotifHint" style="display:none;"></div>
         </div>
         <div class="settings-group">
           <div class="settings-group-title">📤 Экспорт</div>
@@ -328,7 +337,76 @@
             </select>
           </div>
           <div id="customThemePanel" class="mt-3" style="display: none;">
-             <button class="btn btn-sm btn-outline-secondary w-100" type="button" onclick="resetCustomTheme()">↺ Сбросить к светлым</button>
+            <div class="mb-2">
+              <label class="form-label small fw-bold">Взять за основу готовую тему</label>
+              <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" id="customThemeBaseSelect">
+                  <option value="">— выберите тему —</option>
+                  <option value="light">☀️ Светлая</option>
+                  <option value="dark">🌙 Тёмная</option>
+                  <option value="forest">🌿 Лесная</option>
+                  <option value="sunset">🌅 Закат</option>
+                  <option value="ocean">🌊 Океан</option>
+                  <option value="hedgehog">🦔 Ежики</option>
+                  <option value="southpark">🎿 Южный парк</option>
+                  <option value="anime">🌸 Аниме</option>
+                  <option value="oled">🌑 OLED Deep</option>
+                  <option value="oled-warm">🔥 OLED Warm</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-primary" onclick="applyBaseThemeFromSelect()">Применить</button>
+              </div>
+            </div>
+
+            <div class="collapsible-section">
+              <button type="button" class="collapsible-header" onclick="toggleCustomSection('colors')">
+                <span>🎨 Цвета</span>
+                <span class="collapsible-arrow" id="arrow-colors">▸</span>
+              </button>
+              <div class="collapsible-body" id="custom-section-colors" style="display:none;">
+                <div id="customThemePickers"></div>
+                <button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-2" id="customThemeAdvancedToggle" onclick="toggleCustomThemeAdvanced()">▼ Показать все цвета</button>
+              </div>
+            </div>
+
+            <div class="collapsible-section">
+              <button type="button" class="collapsible-header" onclick="toggleCustomSection('bg')">
+                <span>🖼 Фон</span>
+                <span class="collapsible-arrow" id="arrow-bg">▸</span>
+              </button>
+              <div class="collapsible-body" id="custom-section-bg" style="display:none;">
+                <label class="form-label small">Фото с компьютера</label>
+                <input type="file" id="customThemePhotoFile" accept="image/*" class="form-control form-control-sm" onchange="onCustomPhotoUpload(this)">
+                <div class="small text-muted mt-1" id="customThemePhotoMeta"></div>
+                <button type="button" class="btn btn-sm btn-outline-danger w-100 mt-2" onclick="clearCustomPhoto()">✕ Убрать фото</button>
+                <label class="form-label small mt-2">Прозрачность фото: <span id="customThemePhotoOpacityVal">15</span>%</label>
+                <input type="range" class="form-range" id="customThemePhotoOpacity" min="0" max="100" value="15" oninput="onCustomOpacityChange(this, 'photo')">
+                <button type="button" class="btn btn-sm btn-outline-primary w-100 mt-2" onclick="applyThemeFromPhoto(false)">🎨 Взять цвета с фото</button>
+              </div>
+            </div>
+
+            <div class="collapsible-section">
+              <button type="button" class="collapsible-header" onclick="toggleCustomSection('stickers')">
+                <span>✨ Стикеры</span>
+                <span class="collapsible-arrow" id="arrow-stickers">▸</span>
+              </button>
+              <div class="collapsible-body" id="custom-section-stickers" style="display:none;">
+                <label class="form-label small">Эмодзи (до 4 через пробел)</label>
+                <input type="text" class="form-control form-control-sm" id="customThemeStickers" placeholder="🦔 ✨ 🌿" oninput="onCustomStickersChange(this)">
+                <label class="form-label small mt-2">Прозрачность: <span id="customThemeStickersOpacityVal">15</span>%</label>
+                <input type="range" class="form-range" id="customThemeStickersOpacity" min="0" max="100" value="15" oninput="onCustomOpacityChange(this, 'stickers')">
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label class="form-label small fw-bold">Сохранённые темы</label>
+              <div class="d-flex gap-2 mb-2">
+                <input type="text" class="form-control form-control-sm" id="customThemePresetName" placeholder="Название темы" maxlength="40">
+                <button type="button" class="btn btn-sm btn-primary" onclick="saveCurrentAsPreset()">💾</button>
+              </div>
+              <div class="custom-presets-list" id="customThemePresets"></div>
+            </div>
+
+            <button class="btn btn-sm btn-outline-secondary w-100 mt-3" type="button" onclick="resetCustomTheme()">↺ Сбросить к светлым</button>
           </div>
         </div>
       </div>
@@ -359,14 +437,26 @@
 <script src="/static/js/api.js?v={{ app_version }}"></script>
 <script src="/static/js/weeks.js?v={{ app_version }}"></script>
 <script src="/static/js/mini-calendar.js?v={{ app_version }}"></script>
+<script src="/static/js/calendar-cards.js?v={{ app_version }}"></script>
+<script src="/static/js/calendar-day.js?v={{ app_version }}"></script>
 <script src="/static/js/calendar.js?v={{ app_version }}"></script>
 <script src="/static/js/navigation.js?v={{ app_version }}"></script>
 <script src="/static/js/status.js?v={{ app_version }}"></script>
 <script src="/static/js/tasks.js?v={{ app_version }}"></script>
 <script src="/static/js/friends.js?v={{ app_version }}"></script>
+<script src="/static/js/custom-schedule.js?v={{ app_version }}"></script>
+<script src="/static/js/widgets-stats.js?v={{ app_version }}"></script>
+<script src="/static/js/widgets-labs.js?v={{ app_version }}"></script>
+<script src="/static/js/lab-items.js?v={{ app_version }}"></script>
 <script src="/static/js/widgets.js?v={{ app_version }}"></script>
 <script src="/static/js/settings.js?v={{ app_version }}"></script>
 <script src="/static/js/teachers.js?v={{ app_version }}"></script>
+<script src="/static/js/search.js?v={{ app_version }}"></script>
+<script src="/static/js/autocomplete.js?v={{ app_version }}"></script>
+<script src="/static/js/notifications.js?v={{ app_version }}"></script>
+<script src="/static/js/refresh.js?v={{ app_version }}"></script>
+<script src="/static/js/hotkeys.js?v={{ app_version }}"></script>
+<script src="/static/js/custom-theme.js?v={{ app_version }}"></script>
 <script src="/static/js/mobile.js?v={{ app_version }}"></script>
 <script src="/static/js/main.js?v={{ app_version }}"></script>
 </body>
