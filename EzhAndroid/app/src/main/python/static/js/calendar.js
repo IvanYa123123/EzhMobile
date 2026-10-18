@@ -25,7 +25,6 @@ function _sortItemsByTime(a, b) {
     return aTime.localeCompare(bTime);
 }
 
-// Рендер обычной сетки (2 колонки)
 async function renderCalendar() {
     const cal = document.getElementById("calendar");
     if (!cal) return;
@@ -82,7 +81,6 @@ async function renderCalendar() {
     if (typeof checkOnboarding === 'function') checkOnboarding();
 }
 
-// Рендер полного дня для вкладки "День"
 function renderDayView() {
     const container = document.getElementById('dayViewContent');
     const title = document.getElementById('dayViewTitle');
