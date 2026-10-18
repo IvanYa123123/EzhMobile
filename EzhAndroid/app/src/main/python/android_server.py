@@ -1,25 +1,28 @@
 """
-Точка входа для Chaquopy. Вызывается из MainActivity.java:
+Точка входа для Chaquopy.
+Вызывается из MainActivity.java:
     py.getModule("android_server").callAttr("start_server", dataDir)
 """
 import os
-import sys
+import shutil
 
 def start_server(data_dir: str):
     data_dir = str(data_dir)
     os.environ["EZH_DATA_DIR"] = data_dir
 
-    # Копируем VERSION в data_dir при первом запуске,
-    # чтобы _read_app_version() в app.py его нашёл
     bundle_dir = os.path.dirname(os.path.abspath(__file__))
-    version_src = os.path.join(bundle_dir, "VERSION")
-    version_dst = os.path.join(data_dir, "VERSION")
-    if os.path.isfile(version_src) and not os.path.isfile(version_dst):
-        try:
-            import shutil
-            shutil.copy2(version_src, version_dst)
-        except OSError:
-            pass
+
+    # Копируем бандловые файлы в data_dir при первом запуске.
+    # VERSION нужен _read_app_version() в app.py.
+    # teachers.json нужен SevSUTeacherPlanner, который ищет его в BASE_DIR.
+    for fname in ("VERSION", "teachers.json"):
+        src = os.path.join(bundle_dir, fname)
+        dst = os.path.join(data_dir, fname)
+        if os.path.isfile(src) and not os.path.isfile(dst):
+            try:
+                shutil.copy2(src, dst)
+            except OSError:
+                pass
 
     from app import app
 
