@@ -77,6 +77,59 @@
     /* Кнопки плюса в днях */
     .day-tasks-wrap .btn { width: 28px !important; height: 28px !important; font-size: 1rem; padding: 0 !important; }
 
+    /* РАЗВЕРНУТЫЙ ДЕНЬ (FULLSCREEN) */
+    .calendar-grid.has-fullscreen .day-col.fullscreen-day {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 2000;
+        margin: 0;
+        border-radius: 0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-body);
+        padding: 16px;
+        padding-bottom: 80px; /* Место под нижнюю панель */
+    }
+    
+    /* Делаем шапку дня липкой, чтобы всегда видеть дату и кнопку "Свернуть" */
+    .day-col.fullscreen-day .day-header {
+        position: sticky;
+        top: 0;
+        background: var(--bg-body);
+        z-index: 10;
+        margin: -16px -16px 16px -16px;
+        padding: 16px;
+        border-bottom: 2px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .day-col.fullscreen-day .day-schedule-wrap {
+        width: 100% !important;
+        order: 1;
+        padding: 0;
+    }
+    
+    .day-col.fullscreen-day .day-tasks-wrap {
+        width: 100% !important;
+        order: 2;
+        padding: 0;
+        border: none;
+        margin-top: 20px;
+    }
+
+    .day-col.fullscreen-day [id^="tasks-"] {
+        background: var(--bg-surface);
+        border-radius: 12px;
+        padding: 12px;
+        min-height: 100px;
+    }
+
     /* ДРУЗЬЯ И ПРЕПОДЫ (Тоже по 2 дня) */
     .friend-wrapper, .teacher-wrapper { border-radius: 12px; padding: 8px; margin-bottom: 10px; }
     .friend-wrapper .calendar-grid, .teacher-wrapper .calendar-grid {
