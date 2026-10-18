@@ -34,12 +34,24 @@
 </head>
 <body data-mobile-tab="schedule">
 
+<div id="updateNotification" class="position-fixed bottom-0 end-0 p-3" style="z-index: 11000; display: none;">
+    <div class="bg-success text-white px-4 py-2 rounded shadow-sm fw-bold d-flex align-items-center gap-2" style="opacity: 0.95;">
+        <span style="font-size: 1.2em;">🔄</span>
+        <span id="updateNotificationText">Расписание обновлено</span>
+    </div>
+</div>
+
+<div id="undoBar" style="display: none;">
+    <span id="undoBarText">Заметка удалена</span>
+    <button type="button" id="undoBarBtn">Отменить</button>
+</div>
+
 <div id="globalLoader" style="display: none;">
     <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
     <div id="loaderText" class="mt-3 fw-bold text-secondary fs-5">Загрузка...</div>
 </div>
 
-<!-- КОМПАКТНАЯ ШАПКА (Настройки и Обновление справа сверху) -->
+<!-- КОМПАКТНАЯ ШАПКА (Мобильная) -->
 <div id="compactHeader" class="d-md-none d-none bg-white border-bottom shadow-sm px-3 py-2 d-flex align-items-center justify-content-between" style="position: sticky; top: 0; z-index: 1050;">
     <div class="d-flex align-items-center gap-2">
         <span style="font-size: 1.5rem;">🦔</span>
@@ -57,7 +69,11 @@
     <div class="controls-header bg-white p-2 rounded shadow-sm border mb-3" id="onboardingHeader">
         <div class="row align-items-center g-2">
             <div class="col-md-2 col-6">
-                <h5 class="mb-0 fw-bold d-flex align-items-center brand-title" style="color: var(--accent);"><span id="ezh-logo" style="font-size: 2.2rem;">🦔</span><span>дневник</span></h5>
+                <h5 class="mb-0 fw-bold d-flex align-items-center brand-title" style="color: var(--accent); letter-spacing: -0.5px;">
+                    <span id="ezh-logo" style="font-size: 2.2rem; line-height: 0.5; margin-right: 0px; margin-left: -5px; display: inline-block;">🦔</span>
+                    <span>дневник</span>
+                </h5>
+                <div class="version-label">v{{ app_version }}</div>
             </div>
             <div class="col-md-3 col-6">
                 <div class="input-group input-group-sm">
@@ -70,18 +86,20 @@
                     <option value="0">Все подгруппы</option><option value="1">1 подгруппа</option><option value="2">2 подгруппа</option>
                 </select>
             </div>
-            <div class="col-md-5 col-12 d-flex align-items-center justify-content-end gap-2">
-                <button class="btn btn-outline-secondary btn-sm fw-bold d-none d-md-inline-flex" onclick="openSearchModal()">🔍</button>
-                <button class="btn btn-outline-secondary btn-sm fw-bold d-none d-md-inline-flex" onclick="manualRefresh()">🔄</button>
-                <button class="btn btn-outline-secondary btn-sm fw-bold d-none d-md-inline-flex" onclick="openSettingsModal()">⚙️</button>
-                <button class="btn btn-outline-primary btn-sm fw-bold d-none d-md-inline-flex" onclick="goToToday()">Сегодня</button>
+            <div class="col-md-5 col-12 d-flex align-items-center justify-content-end gap-2 flex-wrap">
+                <button class="btn btn-outline-secondary btn-sm fw-bold shadow-sm header-icon-btn d-none d-md-inline-flex" onclick="openSearchModal()" title="Поиск (Ctrl+K)">&#128269;</button>
+                <button class="btn btn-outline-secondary btn-sm fw-bold shadow-sm header-icon-btn d-none d-md-inline-flex" onclick="manualRefresh()" id="refreshBtn" title="Обновить">
+                    <span id="refreshIcon">&#128260;</span>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm fw-bold shadow-sm header-icon-btn d-none d-md-inline-flex" onclick="openSettingsModal()" title="Настройки">&#9881;&#65039;</button>
+                <button class="btn btn-outline-primary btn-sm fw-bold shadow-sm d-none d-md-inline-flex" onclick="goToToday()">Сегодня</button>
                 <div class="dropdown d-none d-md-block">
-                    <button class="btn btn-outline-primary btn-sm dropdown-toggle fw-bold" type="button" id="weekDropdownBtn" data-bs-toggle="dropdown">📅 Неделя</button>
-                    <ul class="dropdown-menu scrollable-weeks shadow-sm border" id="weekDropdownMenu"></ul>
+                    <button class="btn btn-outline-primary btn-sm dropdown-toggle fw-bold shadow-sm" type="button" id="weekDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false" style="min-width: 200px;">📅 Неделя</button>
+                    <ul class="dropdown-menu scrollable-weeks shadow-sm border" id="weekDropdownMenu" aria-labelledby="weekDropdownBtn"></ul>
                 </div>
             </div>
         </div>
-        <div class="row mt-2">
+        <div class="row">
             <div class="col-6 text-start small schedule-status" id="scheduleStatus"></div>
             <div class="col-6 text-end small sync-freshness" id="syncFreshness"></div>
         </div>
@@ -90,14 +108,13 @@
     <div class="row">
         <div class="col-xl-9 col-lg-8 mb-4 main-column">
             <div class="d-flex flex-column w-100">
-                <!-- СЕТКА КАЛЕНДАРЯ -->
                 <div class="calendar-nav-row" id="mainCalendarGridContainer">
                     <div class="nav-side"><button class="nav-arrow" onclick="navigatePrev()">&#10094;</button></div>
                     <div class="calendar-grid flex-grow-1" id="calendar"></div>
                     <div class="nav-side"><button class="nav-arrow" onclick="navigateNext()">&#10095;</button></div>
                 </div>
 
-                <!-- РАСШИРЕННЫЙ РЕЖИМ (Открывается через нижнее меню) -->
+                <!-- РАСШИРЕННЫЙ РЕЖИМ -->
                 <div id="dayViewContainer" style="display: none;">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <button class="btn btn-outline-secondary btn-sm" onclick="navigateDay(-1)">‹ Пред. день</button>
@@ -134,31 +151,62 @@
             </div>
         </div>
 
-        <!-- ВИДЖЕТЫ -->
         <div class="col-xl-3 col-lg-4 sidebar-column">
             <div id="rightWidgetsZone" class="sticky-top d-flex flex-column gap-3" style="top: 15px;">
                 <div class="widget-card" id="widgetMiniCalCard" data-draggable-widget>
-                    <div class="widget-header"><h6 class="widget-title">📅 <span id="miniCalendarTitle">—</span></h6></div>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title">📅 <span id="miniCalendarTitle">—</span></h6>
+                        <div class="widget-header-actions">
+                            <button class="btn btn-sm btn-light py-0 px-2 fw-bold" onclick="miniCalPrevMonth()">‹</button>
+                            <button class="btn btn-sm btn-light py-0 px-2 fw-bold" onclick="miniCalToday()">●</button>
+                            <button class="btn btn-sm btn-light py-0 px-2 fw-bold" onclick="miniCalNextMonth()">›</button>
+                        </div>
+                    </div>
                     <div class="mini-cal-body-row">
                         <div id="miniCalendarBody" class="mini-calendar"></div>
                         <div class="mini-cal-events" id="miniCalEvents"></div>
                     </div>
                 </div>
+
                 <div class="widget-card" id="widgetGlobalCard" data-draggable-widget>
-                    <div class="widget-header"><h6 class="widget-title" onclick="showStats()">Остаток пар</h6></div>
-                    <div class="widget-body-row"><div class="widget-canvas-wrap"><canvas id="globalStatsChart"></canvas></div><div class="widget-details-wrap" id="globalStatsDetails"></div></div>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title clickable" onclick="showStats()">Остаток пар</h6>
+                    </div>
+                    <div class="widget-body-row">
+                        <div class="widget-canvas-wrap" id="globalStatsBody" onclick="showStats()" title="Подробнее"><canvas id="globalStatsChart"></canvas></div>
+                        <div class="widget-details-wrap" id="globalStatsDetails"></div>
+                    </div>
                 </div>
+
                 <div class="widget-card" id="widgetLabsCard" data-draggable-widget>
-                    <div class="widget-header"><h6 class="widget-title" onclick="showLabs()">Лабораторные</h6></div>
-                    <div class="widget-body-row"><div class="widget-canvas-wrap"><canvas id="labStatsChart"></canvas></div><div class="widget-details-wrap" id="labStatsDetails"></div></div>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title clickable" onclick="showLabs()">Лабораторные</h6>
+                    </div>
+                    <div class="widget-body-row">
+                        <div class="widget-canvas-wrap" id="labStatsBody" onclick="showLabs()" title="Подробнее"><canvas id="labStatsChart"></canvas></div>
+                        <div class="widget-details-wrap" id="labStatsDetails"></div>
+                    </div>
                 </div>
+
                 <div class="widget-card" id="widgetPacingCard" data-draggable-widget>
-                    <div class="widget-header"><h6 class="widget-title">Темп сдачи лаб</h6></div>
-                    <div id="labPacingBody" style="max-height: 340px; overflow-y: auto;"><div id="labPacingContent"></div></div>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title">Темп сдачи лаб</h6>
+                    </div>
+                    <div id="labPacingBody" style="max-height: 340px; overflow-y: auto;">
+                        <div id="labPacingContent"></div>
+                    </div>
                 </div>
+
                 <div class="widget-card" id="widgetNotesCard" data-draggable-widget>
-                    <div class="widget-header"><h6 class="widget-title">📝 Заметки</h6></div>
-                    <textarea id="notesWidgetText" class="form-control form-control-sm" placeholder="Заметки..." oninput="onNotesWidgetInput(this)"></textarea>
+                    <div class="widget-header">
+                        <span class="widget-drag-handle" title="Перетащить">⋮⋮</span>
+                        <h6 class="widget-title">📝 Заметки</h6>
+                    </div>
+                    <textarea id="notesWidgetText" class="form-control form-control-sm" placeholder="Что-нибудь важное..." oninput="onNotesWidgetInput(this)"></textarea>
                 </div>
             </div>
         </div>
@@ -166,23 +214,79 @@
 </div>
 
 <!-- МОДАЛКИ -->
-<div class="modal fade" id="addFriendModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h6 class="modal-title">Добавить друга</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
-    <div class="mb-3"><label class="form-label">Имя</label><input type="text" id="friendName" class="form-control form-control-sm"></div>
-    <div class="mb-3"><label class="form-label">Группа</label><input type="text" id="friendGroup" class="form-control form-control-sm"></div>
-    <div class="mb-3"><label class="form-label">Подгруппа</label><select id="friendSubgroup" class="form-select form-select-sm"><option value="0">Все</option><option value="1">1</option><option value="2">2</option></select></div>
-</div><div class="modal-footer"><button type="button" class="btn btn-primary btn-sm" onclick="saveFriend()">Сохранить</button></div></div></div></div>
+<div class="modal fade" id="addFriendModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">Добавить друга</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
+        <div class="mb-3"><label class="form-label small">Имя (или ник)</label><input type="text" id="friendName" class="form-control form-control-sm"></div>
+        <div class="mb-3"><label class="form-label small">Группа</label><input type="text" id="friendGroup" class="form-control form-control-sm" placeholder="Начните вводить..." autocomplete="off"></div>
+        <div class="mb-3"><label class="form-label small">Подгруппа</label><select id="friendSubgroup" class="form-select form-select-sm"><option value="0">Все подгруппы</option><option value="1">1 подгруппа</option><option value="2">2 подгруппа</option></select></div>
+      </div><div class="modal-footer py-1 border-0"><button type="button" class="btn btn-primary btn-sm" onclick="saveFriend()">Сохранить</button></div></div></div>
+</div>
 
-<div class="modal fade" id="addTeacherModal" tabindex="-1"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h6 class="modal-title">Добавить преподавателя</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
-    <input type="text" id="teacherAddInput" class="form-control form-control-sm mb-2" placeholder="ФИО..." oninput="onTeacherSearchInput(this.value)">
-    <div id="teacherAddSuggestions" class="teacher-suggestions"></div>
-</div></div></div></div>
+<div class="modal fade" id="addTeacherModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">🎓 Добавить преподавателя</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
+        <div class="mb-2"><input type="text" id="teacherAddInput" class="form-control form-control-sm" placeholder="Начните вводить ФИО..." autocomplete="off" oninput="onTeacherSearchInput(this.value)" onfocus="onTeacherSearchFocus()"></div>
+        <div class="small text-muted mb-2" id="teacherAddHint"></div>
+        <div id="teacherAddSuggestions" class="teacher-suggestions"></div>
+      </div></div></div>
+</div>
+
+<div class="modal fade" id="searchModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light">
+        <div class="input-group input-group-sm flex-grow-1"><span class="input-group-text border-end-0">🔍</span><input type="text" id="searchInput" class="form-control border-start-0" placeholder="Поиск по заметкам и событиям..." autocomplete="off"></div>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal"></button>
+      </div><div class="modal-body" id="searchResults"></div></div></div>
+</div>
+
+<div class="modal fade" id="statsModal" tabindex="-1">
+  <div class="modal-dialog modal-xl"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">Остаток пар по предметам</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="statsContent"></div></div></div>
+</div>
+
+<div class="modal fade" id="labsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">Управление лабораторными</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="labsContent"></div></div></div>
+</div>
+
+<div class="modal fade" id="labItemsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold" id="labItemsModalTitle">Предмет</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="labItemsContent"><div class="text-center text-muted small py-4">Загрузка…</div></div><div class="modal-footer py-1 border-0 justify-content-between"><small class="text-muted">Клик по названию — переименовать</small><button type="button" class="btn btn-primary btn-sm" data-bs-dismiss="modal">Готово</button></div></div></div>
+</div>
+
+<div class="modal fade" id="customScheduleModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold" id="customScheduleModalTitle">Добавить в расписание</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
+        <input type="hidden" id="csId"><input type="hidden" id="csBaseDate"><input type="hidden" id="csTargetDate">
+        <div class="mb-3 d-flex gap-3"><div class="form-check"><input class="form-check-input" type="radio" name="csType" id="csTypeEvent" value="1" checked onchange="toggleCsFields()"><label class="form-check-label small fw-bold" for="csTypeEvent">Событие</label></div><div class="form-check"><input class="form-check-input" type="radio" name="csType" id="csTypeClass" value="0" onchange="toggleCsFields()"><label class="form-check-label small fw-bold" for="csTypeClass">Пара</label></div></div>
+        <div class="mb-3"><label class="form-label small">Время</label><div class="d-flex align-items-center gap-2"><select id="csClassNum" class="form-select form-select-sm" onchange="updateTimeFromClassNum()" style="display: none; min-width: 130px;"><option value="1">1 пара</option><option value="2">2 пара</option><option value="3">3 пара</option><option value="4">4 пара</option><option value="5">5 пара</option><option value="6">6 пара</option><option value="7">7 пара</option><option value="8">8 пара</option></select><div id="csTimeWrapper" class="d-flex align-items-center gap-2 w-100"><input type="time" id="csTimeStart" class="form-control form-control-sm" required><span>-</span><input type="time" id="csTimeEnd" class="form-control form-control-sm" required></div></div></div>
+        <div class="mb-3"><label class="form-label small" id="csLessonLabel">Текст события</label><input type="text" id="csLesson" class="form-control form-control-sm" placeholder="Название..."></div>
+        <div id="csClassFields" style="display: none;"><div class="mb-3"><label class="form-label small">Тип пары</label><input type="text" id="csTypeName" class="form-control form-control-sm" placeholder="ПЗ"></div><div class="mb-3"><label class="form-label small">Преподаватель</label><input type="text" id="csTeacher" class="form-control form-control-sm" placeholder="ФИО"></div><div class="mb-3"><label class="form-label small">Аудитория</label><input type="text" id="csLocation" class="form-control form-control-sm" placeholder="Ауд..."></div></div>
+        <div class="mb-3"><label class="form-label small">Повторение</label><select id="csRecurrence" class="form-select form-select-sm"><option value="none">Только на этот день</option><option value="weekly">Каждую неделю</option><option value="biweekly">Раз в 2 недели</option></select></div>
+      </div><div class="modal-footer py-1 border-0 justify-content-between"><button type="button" class="btn btn-danger btn-sm" id="csDeleteBtn" onclick="deleteCustomSchedule()" style="display:none;">Удалить</button><button type="button" class="btn btn-primary btn-sm" onclick="saveCustomSchedule()">Сохранить</button></div></div></div>
+</div>
+
+<div class="modal fade" id="recurrenceActionModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold" id="recurrenceActionTitle">Изменение события</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body text-center"><p class="small mb-3 text-muted">Как применить изменения?</p><div class="d-grid gap-2"><button class="btn btn-outline-primary btn-sm fw-bold" id="btnRecurrenceSingle">Только для этой недели</button><button class="btn btn-primary btn-sm fw-bold" id="btnRecurrenceAll">Для всех недель</button></div></div></div></div>
+</div>
+
+<div class="modal fade" id="taskKindModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">Что за заметка?</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p class="small mb-3 text-muted">Что нужно сделать с этим предметом?</p><div class="d-grid gap-2"><button class="btn btn-primary btn-sm fw-bold" id="btnTaskKindDo">📝 Сделать</button><button class="btn btn-primary btn-sm fw-bold" id="btnTaskKindSubmit">✅ Сдать</button></div></div></div></div>
+</div>
+
+<div class="modal fade" id="subjectSettingsModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content border-0 shadow"><div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">Настройка предмета</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">
+        <input type="hidden" id="origSubjectName">
+        <div class="mb-3"><label class="form-label small">Оригинальное название</label><div id="subjectOrigNameDisplay" class="text-muted small fw-bold mb-2"></div></div>
+        <div class="mb-3"><label class="form-label small">Свое название</label><input type="text" id="subjectCustomName" class="form-control form-control-sm" placeholder="Например: Матеша"></div>
+        <div class="mb-3"><label class="form-label small">ФИО преподавателя</label><input type="text" id="subjectTeacher" class="form-control form-control-sm" placeholder="Иванов И.И."></div>
+        <div class="mb-3"><label class="form-label small">Аудитория</label><input type="text" id="subjectLocation" class="form-control form-control-sm" placeholder="Ауд. I-416"></div>
+        <div class="mb-3"><label class="form-label small">Ссылка</label><input type="url" id="subjectLink" class="form-control form-control-sm" placeholder="https://..."></div>
+      </div><div class="modal-footer py-1 border-0"><button type="button" class="btn btn-primary btn-sm" onclick="saveSubjectSettings()">Сохранить</button></div></div></div>
+</div>
 
 <div class="modal fade" id="settingsModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width: 560px;">
     <div class="modal-content border-0 shadow settings-modal">
-      <div class="modal-header py-3"><h5 class="modal-title fw-bold">⚙️ Настройки</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body p-0" id="settingsContentBody">
-        <!-- Блок настроек из оригинального кода -->
+      <div class="modal-header py-3">
+        <h5 class="modal-title fw-bold d-flex align-items-center gap-2 mb-0"><span style="font-size: 1.2em;">⚙️</span><span>Настройки</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
         <div class="settings-group">
           <div class="settings-group-title">📋 Отображение пар</div>
           <label class="settings-row" for="settingsToggleTeacher"><span class="settings-row-label">ФИО преподавателей</span><input class="form-check-input" type="checkbox" id="settingsToggleTeacher" onchange="saveSettingsFromUI()"></label>
