@@ -50,6 +50,7 @@ chaquopy {
         pip {
             install "Flask==2.3.3"
             install "requests==2.31.0"
+            install "certifi==2023.7.22"
             install "waitress==3.0.0"
             install "beautifulsoup4==4.12.2"
         }
