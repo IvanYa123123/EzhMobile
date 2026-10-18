@@ -15,13 +15,30 @@
     }
 
     function switchTab(tab) {
-        if (tab !== "schedule" && tab !== "people" && tab !== "widgets") tab = "schedule";
+        if (tab !== "schedule" && tab !== "day" && tab !== "people" && tab !== "widgets") tab = "schedule";
         document.body.setAttribute("data-mobile-tab", tab);
         try { localStorage.setItem(STORAGE_KEY, tab); } catch (e) {}
         updateNavActive(tab);
+        
+        // Специфичная логика для вкладки "День"
+        if (tab === 'day') {
+            if (!expandedDayDateStr) {
+                // Если день не выбран, открываем понедельник текущей недели или сегодня
+                const today = new Date();
+                const isCurrentWeek = getLocalDateStr(currentBaseDate) === getLocalDateStr(new Date(today.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1))));
+                expandedDayDateStr = isCurrentWeek ? getLocalDateStr(new Date()) : getLocalDateStr(currentBaseDate);
+            }
+            if (typeof renderDayView === 'function') renderDayView();
+        }
+        
         if (isMobile()) window.scrollTo({ top: 0, behavior: "smooth" });
     }
     window.switchMobileTab = switchTab;
+
+    window.openDayMode = function(dateStr) {
+        expandedDayDateStr = dateStr;
+        switchTab('day');
+    };
 
     function checkOnboarding() {
         if (!isMobile()) return;
@@ -32,10 +49,7 @@
 
         if (savedGroup) {
             if (bigHeader) bigHeader.style.display = 'none';
-            if (compactHeader) {
-                compactHeader.classList.remove('d-none');
-                if (compactGroup) compactGroup.textContent = savedGroup;
-            }
+            if (compactHeader) { compactHeader.classList.remove('d-none'); compactGroup.textContent = savedGroup; }
         } else {
             if (bigHeader) bigHeader.style.display = 'block';
             if (compactHeader) compactHeader.classList.add('d-none');
@@ -43,45 +57,29 @@
     }
 
     window.showGroupChange = function() {
-        var bigHeader = document.getElementById('onboardingHeader');
-        var compactHeader = document.getElementById('compactHeader');
-        if (bigHeader) bigHeader.style.display = 'block';
-        if (compactHeader) compactHeader.classList.add('d-none');
+        document.getElementById('onboardingHeader').style.display = 'block';
+        document.getElementById('compactHeader').classList.add('d-none');
+        switchTab('schedule');
     };
 
-    // ОБРАБОТКА КНОПКИ "НАЗАД" (Android Back Button)
+    // ОБРАБОТКА КНОПКИ "НАЗАД" (Android Back)
     window.ezhOnBackPressed = function() {
-        // 1. Если открыта модалка (настройки, добавление друга и т.д.)
         const modals = document.querySelectorAll('.modal.show');
         if (modals.length > 0) {
-            modals.forEach(m => {
-                const modalInstance = bootstrap.Modal.getInstance(m);
-                if (modalInstance) modalInstance.hide();
-            });
+            modals.forEach(m => { const inst = bootstrap.Modal.getInstance(m); if (inst) inst.hide(); });
             return true;
         }
-        
-        // 2. Если открыт развернутый день
-        if (typeof expandedDayDateStr !== 'undefined' && expandedDayDateStr) {
-            if (typeof toggleExpandDay === 'function') toggleExpandDay(expandedDayDateStr);
-            return true;
-        }
-
-        // 3. Если мы не на главном экране (Расписание)
         const currentTab = document.body.getAttribute('data-mobile-tab');
         if (currentTab && currentTab !== 'schedule') {
             switchTab('schedule');
             return true;
         }
-
-        // 4. Если скрыта большая шапка, показываем её (возврат к выбору группы)
         const bigHeader = document.getElementById('onboardingHeader');
         if (bigHeader && bigHeader.style.display === 'none') {
             showGroupChange();
             return true;
         }
-
-        return false; // Если ничего не подошло, отдаем команду Android'у (закрыть приложение)
+        return false;
     };
 
     function initSwipe() {
@@ -112,12 +110,12 @@
         try { saved = localStorage.getItem(STORAGE_KEY) || "schedule"; } catch (e) {}
         updateNavActive(saved);
         document.body.setAttribute("data-mobile-tab", saved);
+        if (saved === 'day' && typeof renderDayView === 'function') renderDayView();
         checkOnboarding();
         initSwipe();
     }
 
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
     else init();
-
     window.addEventListener("resize", initSwipe);
 })();
