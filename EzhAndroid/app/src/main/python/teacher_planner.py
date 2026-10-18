@@ -1,32 +1,20 @@
-"""
-Планировщик расписаний преподавателей СевГУ.
-
-Архитектура:
-  • Список преподавателей (~1500 записей) кэшируется в teachers.json.
-    TTL — 24 часа. При запросе без force отдаётся кэш, если свежий.
-  • ICS-файлы преподавателей сохраняются в teacher_schedules/.
-    Каждый файл — локальный бэкап расписания.
-  • Ленивая загрузка: ICS качается только при первом обращении
-    к конкретному преподавателю.
-  • Фоновое обновление: daemon-поток раз в 6 часов проходит по
-    уже скачанным ICS и обновляет устаревшие (>6ч).
-  • Защита от затирания: если новый ICS пустой или битый —
-    отдаётся старый файл из кэша.
-"""
 import os
 import re
 import json
 import time
 import threading
 import requests
+import urllib3
 
 from teacher_parser import parse_teachers_list, parse_ics_schedule
 
-TEACHERS_LIST_TTL = 24 * 3600       # список преподавателей — раз в сутки
-TEACHER_SCHEDULE_TTL = 6 * 3600     # ICS преподавателя — раз в 6 часов
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+TEACHERS_LIST_TTL = 24 * 3600
+TEACHER_SCHEDULE_TTL = 6 * 3600
 BACKGROUND_REFRESH_INTERVAL = 6 * 3600
-BACKGROUND_REFRESH_STARTUP_DELAY = 600   # первый проход через 10 мин после старта
-BACKGROUND_REFRESH_BATCH = 30            # максимум ICS за один проход
+BACKGROUND_REFRESH_STARTUP_DELAY = 600
+BACKGROUND_REFRESH_BATCH = 30
 SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9\-]{0,80}[a-z0-9]$')
 
 class SevSUTeacherPlanner:
@@ -48,8 +36,11 @@ class SevSUTeacherPlanner:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+        
+        # Фиксы для Android
+        self.session.trust_env = False
+        self.session.verify = False
 
-        # Retry-политика как в planner.py
         try:
             from requests.adapters import HTTPAdapter
             from urllib3.util.retry import Retry
@@ -73,12 +64,7 @@ class SevSUTeacherPlanner:
         self._lock = threading.RLock()
         self._bg_started = False
 
-    # ==============================================================
-    #  СПИСОК ПРЕПОДАВАТЕЛЕЙ
-    # ==============================================================
-
     def get_teachers(self, force: bool = False) -> list:
-        """Список преподавателей. Кэш в teachers.json, TTL 24ч."""
         with self._lock:
             cached = self._read_teachers_cache()
             if cached and not force:
@@ -86,14 +72,12 @@ class SevSUTeacherPlanner:
                 if age < TEACHERS_LIST_TTL:
                     return cached.get('items', [])
 
-        # Идём в сеть
         items = self._fetch_teachers_from_site()
         if items:
             with self._lock:
                 self._write_teachers_cache(items)
             return items
 
-        # Сеть не ответила — отдаём старый кэш
         with self._lock:
             cached = self._read_teachers_cache()
             return cached.get('items', []) if cached else []
@@ -129,20 +113,7 @@ class SevSUTeacherPlanner:
         except OSError:
             pass
 
-    # ==============================================================
-    #  РАСПИСАНИЕ ПРЕПОДАВАТЕЛЯ
-    # ==============================================================
-
     def get_teacher_schedule(self, slug: str, force: bool = False) -> list:
-        """Расписание преподавателя.
-
-        Логика:
-          1. Валидация slug.
-          2. Если не force — отдаём из кэша, если свежий (<6ч).
-          3. Иначе — качаем свежий ICS.
-          4. Если свежий валиден — сохраняем, парсим, отдаём.
-          5. Если сеть упала или свежий битый — отдаём старый кэш.
-        """
         slug = self._validate_slug(slug)
         if not slug:
             return []
@@ -150,26 +121,21 @@ class SevSUTeacherPlanner:
         ics_path = os.path.join(self.schedules_dir, f'{slug}.ics')
         meta_path = os.path.join(self.schedules_dir, f'{slug}.meta.json')
 
-        # Не force — проверяем кэш
         if not force:
             cached = self._read_schedule_cache(ics_path, meta_path)
             if cached is not None and cached['age'] < TEACHER_SCHEDULE_TTL:
                 return cached['schedule']
 
-        # Качаем свежий
         fresh_ics = self._download_ics(slug)
         if fresh_ics:
             schedule = parse_ics_schedule(fresh_ics)
             if schedule:
-                # Сначала сохраняем файл, потом отдаём — иначе при
-                # перезапуске потеряем свежие данные.
                 self._write_ics(ics_path, fresh_ics)
                 self._write_meta(meta_path)
                 return schedule
             else:
                 print(f'[teacher_ics] {slug}: ICS пустой после парсинга', flush=True)
 
-        # Сеть или парсинг не дали результата — отдаём старый кэш
         cached = self._read_schedule_cache(ics_path, meta_path)
         if cached is not None:
             return cached['schedule']
@@ -240,23 +206,14 @@ class SevSUTeacherPlanner:
             return ''
         return s
 
-    # ==============================================================
-    #  ФОНОВОЕ ОБНОВЛЕНИЕ
-    # ==============================================================
-
     def start_background_refresh(self, interval_hours: int = 6):
-        """Запускает daemon-поток, который раз в N часов обновляет
-        устаревшие ICS в teacher_schedules/. Идемпотентен — повторный
-        вызов не запускает второй поток."""
         with self._lock:
             if self._bg_started:
                 return
             self._bg_started = True
 
         def _loop():
-            # Ждём до первого прохода — не мешаем стартовой загрузке
             time.sleep(BACKGROUND_REFRESH_STARTUP_DELAY)
-
             while True:
                 try:
                     self._refresh_stale_batch()
@@ -266,11 +223,8 @@ class SevSUTeacherPlanner:
 
         t = threading.Thread(target=_loop, daemon=True, name='teacher_bg_refresh')
         t.start()
-        print(f'[teacher_bg] фоновое обновление запущено '
-              f'(каждые {interval_hours}ч)', flush=True)
 
     def _refresh_stale_batch(self):
-        """Обновляет устаревшие ICS. За один проход не более BATCH штук."""
         try:
             files = [f for f in os.listdir(self.schedules_dir) if f.endswith('.ics')]
         except OSError:
@@ -295,11 +249,9 @@ class SevSUTeacherPlanner:
             return
 
         stale = stale[:BACKGROUND_REFRESH_BATCH]
-        print(f'[teacher_bg] обновляю {len(stale)} устаревших ICS', flush=True)
-
         for slug in stale:
             try:
                 self.get_teacher_schedule(slug, force=True)
             except Exception as e:
-                print(f'[teacher_bg] {slug}: {e}', flush=True)
-            time.sleep(1.5)   # пауза, чтобы не долбить сервер СевГУ
+                pass
+            time.sleep(1.5)
