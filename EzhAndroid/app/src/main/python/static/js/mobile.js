@@ -34,7 +34,7 @@
             if (bigHeader) bigHeader.style.display = 'none';
             if (compactHeader) {
                 compactHeader.classList.remove('d-none');
-                compactGroup.textContent = savedGroup;
+                if (compactGroup) compactGroup.textContent = savedGroup;
             }
         } else {
             if (bigHeader) bigHeader.style.display = 'block';
@@ -42,10 +42,46 @@
         }
     }
 
-    // Показывать большую шапку, если пользователь захочет сменить группу
     window.showGroupChange = function() {
-        document.getElementById('onboardingHeader').style.display = 'block';
-        document.getElementById('compactHeader').classList.add('d-none');
+        var bigHeader = document.getElementById('onboardingHeader');
+        var compactHeader = document.getElementById('compactHeader');
+        if (bigHeader) bigHeader.style.display = 'block';
+        if (compactHeader) compactHeader.classList.add('d-none');
+    };
+
+    // ОБРАБОТКА КНОПКИ "НАЗАД" (Android Back Button)
+    window.ezhOnBackPressed = function() {
+        // 1. Если открыта модалка (настройки, добавление друга и т.д.)
+        const modals = document.querySelectorAll('.modal.show');
+        if (modals.length > 0) {
+            modals.forEach(m => {
+                const modalInstance = bootstrap.Modal.getInstance(m);
+                if (modalInstance) modalInstance.hide();
+            });
+            return true;
+        }
+        
+        // 2. Если открыт развернутый день
+        if (typeof expandedDayDateStr !== 'undefined' && expandedDayDateStr) {
+            if (typeof toggleExpandDay === 'function') toggleExpandDay(expandedDayDateStr);
+            return true;
+        }
+
+        // 3. Если мы не на главном экране (Расписание)
+        const currentTab = document.body.getAttribute('data-mobile-tab');
+        if (currentTab && currentTab !== 'schedule') {
+            switchTab('schedule');
+            return true;
+        }
+
+        // 4. Если скрыта большая шапка, показываем её (возврат к выбору группы)
+        const bigHeader = document.getElementById('onboardingHeader');
+        if (bigHeader && bigHeader.style.display === 'none') {
+            showGroupChange();
+            return true;
+        }
+
+        return false; // Если ничего не подошло, отдаем команду Android'у (закрыть приложение)
     };
 
     function initSwipe() {
