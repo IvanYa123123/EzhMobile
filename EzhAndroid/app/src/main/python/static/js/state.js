@@ -1,11 +1,3 @@
-// Глобальное состояние приложения.
-//
-// v3.14.1:
-//   • В объединённом режиме друзья и преподаватели всегда живут в одной
-//     зоне. При переключении вкладки скрытая секция подтягивается к
-//     видимой — иначе она остаётся в старой зоне и «прыгает» при
-//     смене таба.
-
 let currentBaseDate = new Date();
 currentBaseDate.setDate(currentBaseDate.getDate() - (currentBaseDate.getDay() === 0 ? 6 : currentBaseDate.getDay() - 1));
 
@@ -78,101 +70,26 @@ let showWidgetLabs    = localStorage.getItem('showWidgetLabs')    !== 'false';
 let showWidgetPacing  = localStorage.getItem('showWidgetPacing')  !== 'false';
 let showWidgetNotes   = localStorage.getItem('showWidgetNotes')   !== 'false';
 
-let showFriendsSection  = localStorage.getItem('showFriendsSection')  !== 'false';
-let showTeachersSection = localStorage.getItem('showTeachersSection') !== 'false';
-
-let separateFriendsTeachers = localStorage.getItem('separateFriendsTeachers') === 'true';
+// Переменная для вкладки "Люди" (friends или teachers)
 let friendsTeachersTab = localStorage.getItem('friendsTeachersTab') || 'friends';
-
-// ============================================================
-//  ОБЪЕДИНЁННЫЙ ВИДЖЕТ ДРУЗЬЯ/ПРЕПОДАВАТЕЛИ
-// ============================================================
 
 function applyFriendsTeachersVisibility() {
     const friendsEl  = document.getElementById('friendsSection');
     const teachersEl = document.getElementById('teachersSection');
-    const btnToTeachers = document.getElementById('switchTabToTeachersBtn');
-    const btnToFriends  = document.getElementById('switchTabToFriendsBtn');
+    const btnFriends = document.getElementById('btnTabFriends');
+    const btnTeachers = document.getElementById('btnTabTeachers');
     if (!friendsEl || !teachersEl) return;
 
-    const showF = showFriendsSection;
-    const showT = showTeachersSection;
-
-    if (separateFriendsTeachers) {
-        friendsEl.style.display  = showF ? '' : 'none';
-        teachersEl.style.display = showT ? '' : 'none';
-        if (btnToTeachers) btnToTeachers.style.display = 'none';
-        if (btnToFriends)  btnToFriends.style.display  = 'none';
-        return;
-    }
-
-    if (!showF && !showT) {
-        friendsEl.style.display  = 'none';
+    if (friendsTeachersTab === 'friends') {
+        friendsEl.style.display = '';
         teachersEl.style.display = 'none';
-        if (btnToTeachers) btnToTeachers.style.display = 'none';
-        if (btnToFriends)  btnToFriends.style.display  = 'none';
-        return;
-    }
-
-    let tab = friendsTeachersTab;
-    if (!showF && showT) tab = 'teachers';
-    if (showF && !showT) tab = 'friends';
-
-    if (tab === 'friends') {
-        friendsEl.style.display  = '';
-        teachersEl.style.display = 'none';
-        if (btnToTeachers) btnToTeachers.style.display = showT ? '' : 'none';
-        if (btnToFriends)  btnToFriends.style.display  = 'none';
+        if (btnFriends) btnFriends.classList.add('active');
+        if (btnTeachers) btnTeachers.classList.remove('active');
     } else {
-        friendsEl.style.display  = 'none';
+        friendsEl.style.display = 'none';
         teachersEl.style.display = '';
-        if (btnToTeachers) btnToTeachers.style.display = 'none';
-        if (btnToFriends)  btnToFriends.style.display  = showF ? '' : 'none';
-    }
-}
-
-// ------------------------------------------------------------
-//  Синхронизация зоны размещения.
-//  В объединённом режиме обе секции должны лежать в одной
-//  зоне (#mainColumnSections или #rightWidgetsZone). Иначе
-//  при переключении вкладки скрытая секция остаётся в старой
-//  зоне, и пользователь видит «прыжок» раздела между областями.
-// ------------------------------------------------------------
-
-function _syncFriendsTeachersZone() {
-    if (separateFriendsTeachers) return;
-
-    const friendsEl  = document.getElementById('friendsSection');
-    const teachersEl = document.getElementById('teachersSection');
-    if (!friendsEl || !teachersEl) return;
-
-    const fVisible = friendsEl.style.display !== 'none';
-    const tVisible = teachersEl.style.display !== 'none';
-
-    let activeEl, inactiveEl;
-    if (fVisible && !tVisible) {
-        activeEl = friendsEl;
-        inactiveEl = teachersEl;
-    } else if (tVisible && !fVisible) {
-        activeEl = teachersEl;
-        inactiveEl = friendsEl;
-    } else {
-        // Обе видны (раздельный или init) или обе скрыты — синхронизировать нечего.
-        return;
-    }
-
-    const activeZone = activeEl.parentElement;
-    if (!activeZone) return;
-    if (inactiveEl.parentElement === activeZone) return;
-
-    // Переносим неактивную секцию сразу за активной — порядок в зоне сохраняется.
-    activeZone.insertBefore(inactiveEl, activeEl.nextSibling);
-
-    if (typeof _saveLayout === 'function') {
-        try { _saveLayout(); } catch (e) {}
-    }
-    if (typeof _updateHorizontalLayout === 'function') {
-        try { _updateHorizontalLayout(); } catch (e) {}
+        if (btnFriends) btnFriends.classList.remove('active');
+        if (btnTeachers) btnTeachers.classList.add('active');
     }
 }
 
@@ -180,17 +97,12 @@ function switchFriendsTeachersTab(tab) {
     if (tab !== 'friends' && tab !== 'teachers') return;
     friendsTeachersTab = tab;
     try { localStorage.setItem('friendsTeachersTab', tab); } catch (e) {}
-
-    // ВАЖНО: синхронизация зоны ДО смены display — чтобы неактивная
-    // секция уже стояла в целевой зоне, когда мы её покажем.
-    _syncFriendsTeachersZone();
-
     applyFriendsTeachersVisibility();
 
-    if (typeof renderTeachersCalendars === 'function') {
+    if (tab === 'teachers' && typeof renderTeachersCalendars === 'function') {
         try { renderTeachersCalendars(); } catch (e) { console.error(e); }
     }
-    if (typeof renderFriendsCalendar === 'function') {
+    if (tab === 'friends' && typeof renderFriendsCalendar === 'function') {
         try { renderFriendsCalendar(); } catch (e) { console.error(e); }
     }
 }
@@ -268,12 +180,6 @@ function onNotesWidgetInput(el) {
     if (!el) return;
     try { localStorage.setItem('notesWidget', el.value); } catch (e) {}
 }
-
-function moveNotesWidget() {
-    console.warn('[state] moveNotesWidget() устарела');
-}
-
-function restoreNotesWidgetZone() {}
 
 // ============================================================
 //  ВЕРТИКАЛЬНЫЙ РЕЖИМ: ДЕНЬ
@@ -519,13 +425,6 @@ function initWidgetDragAndDrop() {
     _widgetZoneIds.forEach(id => _initSortableZone(id));
 
     _applyHorizontalLayoutSync();
-
-    // После восстановления раскладки могли оказаться ситуации,
-    // когда в объединённом режиме секции лежат в разных зонах.
-    // Подтягиваем скрытую к видимой.
-    if (typeof _syncFriendsTeachersZone === 'function') {
-        try { _syncFriendsTeachersZone(); } catch (e) {}
-    }
 }
 
 function _preloadHedgehogSvg() {
@@ -666,14 +565,11 @@ function _onDragMove(e) {
 
 function _onDragUp(e) {
     if (!_dragState) return;
-
     const card = _dragState.card;
     const ph = window._dropPlaceholder;
-
     if (ph && ph.parentElement) {
         ph.parentElement.insertBefore(card, ph);
     }
-
     _endDrag();
 }
 
@@ -698,7 +594,6 @@ function _onDragWheel(e) {
 
 function _endDrag() {
     if (!_dragState) return;
-
     const card = _dragState.card;
     _dragState = null;
 
@@ -729,7 +624,6 @@ function _endDrag() {
 
 function _createGhost(x, y) {
     _destroyGhost();
-
     const wrap = document.createElement('div');
     wrap.className = 'drag-hedgehog-wrap';
     wrap.style.width  = _DRAG_HEDGEHOG_SIZE + 'px';
@@ -811,13 +705,10 @@ function _zoneUnderPoint(x, y) {
 
 function _autoScrollIfNearEdge(e) {
     if (!_dragState) return;
-
     const now = Date.now();
     if (now - _lastEdgeScrollTs < _DRAG_EDGE_THROTTLE) return;
-
     const y = e.clientY;
     const h = window.innerHeight;
-
     if (y < _DRAG_EDGE_PX) {
         _lastEdgeScrollTs = now;
         window.scrollBy(0, -_DRAG_EDGE_STEP);
@@ -843,7 +734,6 @@ function _applyHorizontalLayoutSync() {
 
 function _updateHorizontalLayout() {
     _applyHorizontalLayoutSync();
-
     if (_hLayoutRaf) cancelAnimationFrame(_hLayoutRaf);
     _hLayoutRaf = requestAnimationFrame(() => {
         _hLayoutRaf = null;
@@ -855,7 +745,6 @@ function _updateHorizontalLayout() {
         if (typeof globalLabChart !== 'undefined' && globalLabChart) {
             try { globalLabChart.resize(); } catch (e) {}
         }
-
         if (typeof refreshMiniCalEvents === 'function') refreshMiniCalEvents();
     });
 }
@@ -887,7 +776,6 @@ function _visibleCards(zone, excluded) {
 
 function _positionPlaceholder(zone, dragged, e) {
     if (!zone.clientWidth || !zone.clientHeight) return;
-
     const ph = window._dropPlaceholder;
 
     let targetCard = e.target && e.target.closest && e.target.closest(_widgetZoneSelector());
@@ -899,12 +787,10 @@ function _positionPlaceholder(zone, dragged, e) {
 
     if (!targetCard) {
         const cards = _visibleCards(zone, dragged).filter(c => c !== ph);
-
         if (cards.length === 0) {
             _showDropPlaceholderAtEnd(zone, dragged);
             return;
         }
-
         let closest = null;
         let minDist = Infinity;
         for (const c of cards) {
@@ -935,15 +821,12 @@ function _positionPlaceholder(zone, dragged, e) {
         before = distFromCenter < 0;
     }
 
-    if (ph
-        && ph.parentElement === zone
-        && ph.dataset.forId === targetCard.id) {
+    if (ph && ph.parentElement === zone && ph.dataset.forId === targetCard.id) {
         const prevBefore = ph.dataset.before === 'true';
         if (prevBefore !== before && Math.abs(distFromCenter) < _PLACEHOLDER_HYSTERESIS) {
             return;
         }
     }
-
     _showDropPlaceholder(targetCard, before);
 }
 
@@ -956,7 +839,6 @@ function _calcPlaceholderSize(zone, dragged) {
         const zoneW = zone.clientWidth || 0;
         return { w: zoneW, h: _HORIZONTAL_PLACEHOLDER_H };
     }
-
     if (_dragStartSize.w > 0 && _dragStartSize.h > 0) {
         return { w: _dragStartSize.w, h: _dragStartSize.h };
     }
@@ -971,10 +853,7 @@ function _showDropPlaceholder(targetCard, before) {
 
     const { w, h } = _calcPlaceholderSize(zone, dragged);
 
-    if (current
-        && current.dataset.forId === targetCard.id
-        && current.dataset.before === String(before)
-        && current.parentElement === zone) {
+    if (current && current.dataset.forId === targetCard.id && current.dataset.before === String(before) && current.parentElement === zone) {
         if (w && current.style.width  !== w + 'px') current.style.width  = w + 'px';
         if (h && current.style.height !== h + 'px') current.style.height = h + 'px';
         return;
@@ -995,31 +874,22 @@ function _showDropPlaceholder(targetCard, before) {
     } else {
         zone.insertBefore(ph, targetCard.nextSibling);
     }
-
     window._dropPlaceholder = ph;
 }
 
 function _showDropPlaceholderAtEnd(zone, dragged) {
     const current = window._dropPlaceholder;
-
-    if (current
-        && current.parentElement === zone
-        && current.dataset.atEnd === '1'
-        && !current.nextElementSibling) {
+    if (current && current.parentElement === zone && current.dataset.atEnd === '1' && !current.nextElementSibling) {
         return;
     }
-
     _removeDropPlaceholder();
-
     const { w, h } = _calcPlaceholderSize(zone, dragged);
-
     const ph = document.createElement('div');
     ph.className = 'widget-drop-placeholder';
     ph.dataset.atEnd = '1';
     if (w) ph.style.width  = w + 'px';
     if (h) ph.style.height = h + 'px';
     ph.style.flex = '0 0 auto';
-
     zone.appendChild(ph);
     window._dropPlaceholder = ph;
 }
@@ -1039,12 +909,6 @@ function _refreshAfterMove(card) {
 
         if (typeof renderFriendsCalendar === 'function') renderFriendsCalendar();
         if (typeof renderTeachersCalendars === 'function') renderTeachersCalendars();
-
-        // После перетаскивания одной из секций в объединённом режиме
-        // подтягиваем вторую, чтобы они не разъехались по зонам.
-        if (typeof _syncFriendsTeachersZone === 'function') {
-            try { _syncFriendsTeachersZone(); } catch (e) {}
-        }
 
         if (card.id === 'widgetMiniCalCard' && typeof refreshMiniCalEvents === 'function') {
             try { refreshMiniCalEvents(); } catch (e) { console.error(e); }
