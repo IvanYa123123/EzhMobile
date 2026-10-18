@@ -73,6 +73,16 @@ async function renderCalendar() {
         scheduleByDate.get(it.date).push(it);
     });
 
+    // Загружаем заметки на неделю ЗАРАНЕЕ, чтобы отрисовать точки
+    let tasksByDate = {};
+    try {
+        let tasks = await apiLoadTasks(startStr, endStr);
+        tasks.forEach(t => {
+            if (!tasksByDate[t.date]) tasksByDate[t.date] = [];
+            tasksByDate[t.date].push(t);
+        });
+    } catch (e) { console.error("Tasks load failed", e); }
+
     const htmlParts = [];
     for (let i = 0; i < 7; i++) {
         let d = new Date(currentBaseDate);
@@ -85,58 +95,51 @@ async function renderCalendar() {
         let customAll = getCustomItemsForDate(dateStr);
         let eventItems = customAll.filter(x => x.is_event);
         let customPairs = customAll.filter(x => !x.is_event);
-        let allItems = eventItems.concat(customPairs).concat(pairItems).sort(_sortItemsByTime);
+        
+        let pairsCount = pairItems.length + customPairs.length;
+        let eventsCount = eventItems.length;
+        let dayTasks = tasksByDate[dateStr] || [];
 
-        let cardsHtml = '';
-        allItems.forEach(item => {
-            if (item.is_event) cardsHtml += _renderEventCard(item);
-            else cardsHtml += _renderPairCard(item);
+        // Генерация точек-индикаторов
+        let dotsHtml = '';
+        dayTasks.forEach(t => {
+            let color = 'var(--status-green)';
+            if (t.status === 'orange') color = 'var(--status-orange)';
+            if (t.status === 'red') color = 'var(--status-red)';
+            if (t.status === 'completed') color = 'var(--status-completed)';
+            dotsHtml += `<span class="day-dot" style="background:${color}" title="${escapeHtml(t.text)}"></span>`;
         });
-
-        const pairsCount = pairItems.length + customPairs.length;
-        const eventsCount = eventItems.length;
+        eventItems.forEach(e => {
+            dotsHtml += `<span class="day-dot dot-event" title="${escapeHtml(e.lesson)}"></span>`;
+        });
 
         htmlParts.push(`
             <div class="day-col ${isTodayClass}" id="day-col-${dateStr}">
                 <div class="day-header"><span class="day-nav-center">${displayDate}</span></div>
-                <div class="day-schedule-wrap mb-2">
-                    ${(pairsCount + eventsCount) > 0 ? `
-                        <div class="schedule-summary shadow-sm" onclick="toggleSchedule('${dateStr}')">
-                            <span>🕒 ${pairsCount} пар</span>
-                            ${eventsCount > 0 ? `<span class="ms-2">🎯 ${eventsCount}</span>` : ''}
-                            <span id="arrow-${dateStr}" class="ms-2">▼</span>
-                        </div>
-                        <div id="schedule-details-${dateStr}">
-                            <div class="schedule-details-inner">${cardsHtml}</div>
+                
+                <div class="day-dots-row">
+                    ${dotsHtml || '<span class="text-muted" style="font-size:10px; opacity:0.5;">нет меток</span>'}
+                </div>
+
+                <div class="day-schedule-wrap mb-2 mt-1">
+                    ${pairsCount > 0 ? `
+                        <div class="schedule-summary shadow-sm" style="cursor:default;">
+                            <span>🕒 ${pairsCount} ${plural(pairsCount, 'пара', 'пары', 'пар')}</span>
                         </div>
                     ` : `<div class="empty-state-inline">☕ Свободно</div>`}
-                    <button type="button" class="day-expand-btn mt-1 w-100"
-                            onclick="event.stopPropagation(); openCustomScheduleModal('${dateStr}')"
-                            title="Добавить событие">+ Событие</button>
+                    ${eventsCount > 0 ? `<div class="badge bg-success w-100 mt-1">Событий: ${eventsCount}</div>` : ''}
                 </div>
-                <div class="day-tasks-wrap mt-2">
-                    <div id="tasks-${dateStr}" class="mb-1"></div>
-                    <div id="expand-btn-wrap-${dateStr}" style="display:none; text-align:center; margin-top:4px;">
-                        <button type="button" class="day-expand-btn" onclick="event.stopPropagation(); toggleExpandDay('${dateStr}')">
-                            <span class="day-expand-icon">▼</span>
-                            <span class="day-expand-label">Развернуть</span>
-                        </button>
-                    </div>
-                    <div id="task-input-wrap-${dateStr}" style="display:none; margin-top:6px;">
-                        <textarea id="task-input-${dateStr}" class="form-control form-control-sm" rows="2"
-                                  placeholder="Заметка..."
-                                  onkeydown="handleNewTask(event, '${dateStr}')"
-                                  onblur="handleTaskBlur('${dateStr}')"></textarea>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary w-100 mt-1"
+                
+                <div class="day-tasks-wrap mt-auto">
+                    <button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-2"
                             style="font-size: 11px;"
-                            onclick="event.stopPropagation(); toggleTaskInput('${dateStr}')">+ Заметка</button>
+                            onclick="event.stopPropagation(); openDayMode('${dateStr}')">Открыть день</button>
                 </div>
             </div>`);
     }
     cal.innerHTML = htmlParts.join('');
 
-    // Клик по колонке = развернуть день (десктоп) / открыть вкладку «День» (мобилка)
+    // Клик по колонке = развернуть день
     cal.querySelectorAll('.day-col').forEach(col => {
         col.addEventListener('click', (e) => {
             if (e.target.closest('button, a, textarea, input, .schedule-item, .schedule-summary')) return;
@@ -144,11 +147,6 @@ async function renderCalendar() {
             if (id && id.startsWith('day-col-')) openDayMode(id.slice('day-col-'.length));
         });
     });
-
-    try {
-        let tasks = await apiLoadTasks(startStr, endStr);
-        if (typeof renderTasksStaggered === 'function') renderTasksStaggered(tasks);
-    } catch (e) { console.error(e); }
 
     if (typeof _layoutScheduleNotes === 'function') _layoutScheduleNotes();
 
@@ -158,7 +156,7 @@ async function renderCalendar() {
     if (typeof checkOnboarding === 'function') checkOnboarding();
 }
 
-function renderDayView() {
+async function renderDayView() {
     const container = document.getElementById('dayViewContent');
     const title = document.getElementById('dayViewTitle');
     if (!container || !window.expandedDayDateStr) return;
@@ -173,15 +171,20 @@ function renderDayView() {
     let customPairs = customAll.filter(x => !x.is_event);
     let allItems = eventItems.concat(customPairs).concat(pairItems).sort(_sortItemsByTime);
 
+    // Загружаем заметки конкретно на этот день
+    let dayTasks = [];
+    try {
+        dayTasks = await apiLoadTasks(window.expandedDayDateStr, window.expandedDayDateStr);
+    } catch (e) { console.error("Day tasks load failed", e); }
+
+    let html = '';
+
+    // 1. Блок пар и событий
     if (allItems.length === 0) {
-        container.innerHTML = `<div class="empty-state">
-            <div class="empty-state-title">Пар нет</div>
-            <div class="text-muted small mt-2">Отдыхаем!</div>
-        </div>`;
+        html += `<div class="text-center text-muted small mb-3">Пар и событий нет.</div>`;
     } else {
-        let html = '';
         allItems.forEach(item => {
-            let isEvent = item.is_event || item.is_custom && item.is_event;
+            let isEvent = item.is_event || (item.is_custom && item.is_event);
             let typeBadge = isEvent ? 'Событие' : (item.type_name || 'Пара');
             let bgColor = isEvent ? 'var(--event-color)' : (item.is_custom ? 'var(--custom-pair-color)' : 'var(--accent)');
             html += `
@@ -195,7 +198,54 @@ function renderDayView() {
                     ${item.location ? `<div class="text-muted small">🚪 ${escapeHtml(item.location)}</div>` : ''}
                 </div>`;
         });
-        container.innerHTML = html;
+    }
+
+    // 2. Блок заметок (полный текст)
+    html += `<div class="mt-4 mb-2 fw-bold text-secondary border-bottom pb-1">📝 Заметки на день</div>`;
+    if (dayTasks.length === 0) {
+        html += `<div class="text-center text-muted small mb-3">Заметок нет.</div>`;
+    } else {
+        dayTasks.forEach(t => {
+            let color = t.status === 'green' ? 'var(--status-green)' : (t.status === 'orange' ? 'var(--status-orange)' : 'var(--status-red)');
+            let isDone = t.status === 'completed';
+            html += `
+                <div class="task-card mb-2 shadow-sm" style="border-left: 4px solid ${isDone ? 'var(--status-completed)' : color}; ${isDone ? 'opacity:0.6; text-decoration:line-through;' : ''}">
+                    <div class="task-text" style="font-size: 0.95rem; white-space: pre-wrap;">${escapeHtml(t.text)}</div>
+                </div>
+            `;
+        });
+    }
+
+    // 3. Форма добавления
+    html += `
+        <div class="mt-4 p-3 bg-light rounded border">
+            <div class="fw-bold mb-2 small text-secondary">ДОБАВИТЬ НА ЭТОТ ДЕНЬ</div>
+            <textarea id="dayViewNewNote" class="form-control form-control-sm mb-2" rows="2" placeholder="Текст заметки..."></textarea>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-primary flex-fill" onclick="createDayViewTask('${window.expandedDayDateStr}')">+ Заметка</button>
+                <button class="btn btn-sm btn-outline-success flex-fill" onclick="openCustomScheduleModal('${window.expandedDayDateStr}')">+ Событие</button>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+async function createDayViewTask(dateStr) {
+    const textarea = document.getElementById('dayViewNewNote');
+    const text = textarea.value.trim();
+    if (!text) return;
+    
+    textarea.value = ''; // Очищаем сразу
+    try {
+        let data = await apiCreateTask({date: dateStr, text: text, status: 'green'});
+        taskDatesSet.add(dateStr);
+        if (typeof refreshMiniCalEvents === 'function') refreshMiniCalEvents();
+        if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
+        await renderDayView(); // Перерисовываем день
+    } catch (e) {
+        alert("Не удалось создать заметку");
+        console.error(e);
     }
 }
 
