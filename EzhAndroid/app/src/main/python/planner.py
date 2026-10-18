@@ -3,7 +3,6 @@ import urllib3
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Отключаем предупреждения об SSL, так как мы отключили проверку для Android
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class SevSUPlanner:
@@ -55,12 +54,7 @@ class SevSUPlanner:
 
         self.holidays = {
             (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (1, 8),
-            (2, 23),
-            (3, 8),
-            (5, 1),
-            (5, 9),
-            (6, 12),
-            (11, 4)
+            (2, 23), (3, 8), (5, 1), (5, 9), (6, 12), (11, 4)
         }
 
     def get_semester_season(self, date_obj: datetime) -> int:
@@ -80,27 +74,32 @@ class SevSUPlanner:
     def get_schedule_for_week(self, group_name: str, week: int) -> list:
         params = {"v": "6.2", "section": "0", "group": group_name, "week": week}
         try:
-            response = self.session.get(self.api_url, params=params, timeout=10)
+            response = self.session.get(self.api_url, params=params, timeout=15)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("ok"):
                     return data.get("schedule") or []
         except Exception as e:
-            print(f"Schedule fetch error: {e}")
+            print(f"Schedule fetch error week {week}: {e}")
         return []
 
     def _fetch_weeks_parallel(self, group_name: str, weeks) -> dict:
-        """В Android потоки работают нестабильно, поэтому качаем последовательно."""
+        """Параллельно тянет расписание для списка недель."""
         results = {}
-        for w in weeks:
-            try:
-                results[w] = self.get_schedule_for_week(group_name, w)
-            except Exception:
-                results[w] = []
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            future_to_week = {
+                ex.submit(self.get_schedule_for_week, group_name, w): w
+                for w in weeks
+            }
+            for fut in as_completed(future_to_week):
+                w = future_to_week[fut]
+                try:
+                    results[w] = fut.result()
+                except Exception:
+                    results[w] = []
         return results
 
-    def get_semester_schedule(self, group_name: str, target_subgroup: str = "0",
-                              max_weeks: int = 25) -> list:
+    def get_semester_schedule(self, group_name: str, target_subgroup: str = "0", max_weeks: int = 25) -> list:
         full_schedule = []
 
         odd_template = None
@@ -144,7 +143,6 @@ class SevSUPlanner:
                         even_template = processed_week
                         even_template_week = week
                         even_template_len = len(processed_week)
-
             else:
                 template_to_use = None
                 template_week = None
@@ -179,7 +177,6 @@ class SevSUPlanner:
                                 extrapolated_item["date"] = new_date.strftime("%Y-%m-%d")
                             except ValueError:
                                 pass
-
                         full_schedule.append(extrapolated_item)
 
         return full_schedule
