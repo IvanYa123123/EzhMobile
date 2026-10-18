@@ -108,7 +108,7 @@ function switchFriendsTeachersTab(tab) {
 }
 
 // ============================================================
-//  SYNC TIMES
+//  SYNC TIMES  (когда последний раз реально получали данные с сервера)
 // ============================================================
 
 function loadSyncTimes() {
@@ -565,11 +565,14 @@ function _onDragMove(e) {
 
 function _onDragUp(e) {
     if (!_dragState) return;
+
     const card = _dragState.card;
     const ph = window._dropPlaceholder;
+
     if (ph && ph.parentElement) {
         ph.parentElement.insertBefore(card, ph);
     }
+
     _endDrag();
 }
 
@@ -594,6 +597,7 @@ function _onDragWheel(e) {
 
 function _endDrag() {
     if (!_dragState) return;
+
     const card = _dragState.card;
     _dragState = null;
 
@@ -624,6 +628,7 @@ function _endDrag() {
 
 function _createGhost(x, y) {
     _destroyGhost();
+
     const wrap = document.createElement('div');
     wrap.className = 'drag-hedgehog-wrap';
     wrap.style.width  = _DRAG_HEDGEHOG_SIZE + 'px';
@@ -705,10 +710,13 @@ function _zoneUnderPoint(x, y) {
 
 function _autoScrollIfNearEdge(e) {
     if (!_dragState) return;
+
     const now = Date.now();
     if (now - _lastEdgeScrollTs < _DRAG_EDGE_THROTTLE) return;
+
     const y = e.clientY;
     const h = window.innerHeight;
+
     if (y < _DRAG_EDGE_PX) {
         _lastEdgeScrollTs = now;
         window.scrollBy(0, -_DRAG_EDGE_STEP);
@@ -734,6 +742,7 @@ function _applyHorizontalLayoutSync() {
 
 function _updateHorizontalLayout() {
     _applyHorizontalLayoutSync();
+
     if (_hLayoutRaf) cancelAnimationFrame(_hLayoutRaf);
     _hLayoutRaf = requestAnimationFrame(() => {
         _hLayoutRaf = null;
@@ -745,6 +754,7 @@ function _updateHorizontalLayout() {
         if (typeof globalLabChart !== 'undefined' && globalLabChart) {
             try { globalLabChart.resize(); } catch (e) {}
         }
+
         if (typeof refreshMiniCalEvents === 'function') refreshMiniCalEvents();
     });
 }
@@ -776,6 +786,7 @@ function _visibleCards(zone, excluded) {
 
 function _positionPlaceholder(zone, dragged, e) {
     if (!zone.clientWidth || !zone.clientHeight) return;
+
     const ph = window._dropPlaceholder;
 
     let targetCard = e.target && e.target.closest && e.target.closest(_widgetZoneSelector());
@@ -787,10 +798,12 @@ function _positionPlaceholder(zone, dragged, e) {
 
     if (!targetCard) {
         const cards = _visibleCards(zone, dragged).filter(c => c !== ph);
+
         if (cards.length === 0) {
             _showDropPlaceholderAtEnd(zone, dragged);
             return;
         }
+
         let closest = null;
         let minDist = Infinity;
         for (const c of cards) {
@@ -821,12 +834,15 @@ function _positionPlaceholder(zone, dragged, e) {
         before = distFromCenter < 0;
     }
 
-    if (ph && ph.parentElement === zone && ph.dataset.forId === targetCard.id) {
+    if (ph
+        && ph.parentElement === zone
+        && ph.dataset.forId === targetCard.id) {
         const prevBefore = ph.dataset.before === 'true';
         if (prevBefore !== before && Math.abs(distFromCenter) < _PLACEHOLDER_HYSTERESIS) {
             return;
         }
     }
+
     _showDropPlaceholder(targetCard, before);
 }
 
@@ -839,6 +855,7 @@ function _calcPlaceholderSize(zone, dragged) {
         const zoneW = zone.clientWidth || 0;
         return { w: zoneW, h: _HORIZONTAL_PLACEHOLDER_H };
     }
+
     if (_dragStartSize.w > 0 && _dragStartSize.h > 0) {
         return { w: _dragStartSize.w, h: _dragStartSize.h };
     }
@@ -853,7 +870,10 @@ function _showDropPlaceholder(targetCard, before) {
 
     const { w, h } = _calcPlaceholderSize(zone, dragged);
 
-    if (current && current.dataset.forId === targetCard.id && current.dataset.before === String(before) && current.parentElement === zone) {
+    if (current
+        && current.dataset.forId === targetCard.id
+        && current.dataset.before === String(before)
+        && current.parentElement === zone) {
         if (w && current.style.width  !== w + 'px') current.style.width  = w + 'px';
         if (h && current.style.height !== h + 'px') current.style.height = h + 'px';
         return;
@@ -874,22 +894,31 @@ function _showDropPlaceholder(targetCard, before) {
     } else {
         zone.insertBefore(ph, targetCard.nextSibling);
     }
+
     window._dropPlaceholder = ph;
 }
 
 function _showDropPlaceholderAtEnd(zone, dragged) {
     const current = window._dropPlaceholder;
-    if (current && current.parentElement === zone && current.dataset.atEnd === '1' && !current.nextElementSibling) {
+
+    if (current
+        && current.parentElement === zone
+        && current.dataset.atEnd === '1'
+        && !current.nextElementSibling) {
         return;
     }
+
     _removeDropPlaceholder();
+
     const { w, h } = _calcPlaceholderSize(zone, dragged);
+
     const ph = document.createElement('div');
     ph.className = 'widget-drop-placeholder';
     ph.dataset.atEnd = '1';
     if (w) ph.style.width  = w + 'px';
     if (h) ph.style.height = h + 'px';
     ph.style.flex = '0 0 auto';
+
     zone.appendChild(ph);
     window._dropPlaceholder = ph;
 }
