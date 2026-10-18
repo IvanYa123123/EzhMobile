@@ -107,9 +107,25 @@ def index(): return render_template("index.html")
 @app.route("/api/groups")
 def get_groups():
     groups = []
+    # 1. Пытаемся прочитать Group.txt
     try:
-        with open(GROUPS_FILE, 'r', encoding='utf-8') as f: groups = [line.strip() for line in f if line.strip()]
+        with open(GROUPS_FILE, 'r', encoding='utf-8') as f: 
+            groups = [line.strip() for line in f if line.strip()]
     except OSError: pass
+    
+    # 2. Если файла нет — качаем с сайта
+    if not groups:
+        try:
+            params = {"v": "6.2", "section": "0"}
+            r = planner.session.get(planner.groups_api, params=params, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list):
+                    groups = data
+        except Exception as e: 
+            print("Failed to load groups from web:", e)
+
+    # 3. Добавляем кастомные группы
     seen = set(groups)
     for name in load_custom_groups():
         if name not in seen: seen.add(name); groups.append(name)
@@ -246,24 +262,31 @@ def update_lab_item(item_id):
 def get_schedule_all():
     group = request.args.get('group')
     if not group: return jsonify([])
-    cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{request.args.get('subgroup', '0')}.json")
-    if os.path.exists(cache_file):
-        try:
+    try:
+        cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{request.args.get('subgroup', '0')}.json")
+        if os.path.exists(cache_file):
             with open(cache_file, 'r', encoding='utf-8') as f: return jsonify(json.load(f))
-        except Exception: pass
-    return jsonify(planner.get_semester_schedule(group, request.args.get('subgroup', '0')))
+        
+        # Защита от падения сервера при сетевых ошибках
+        schedule = planner.get_semester_schedule(group, request.args.get('subgroup', '0'))
+        return jsonify(schedule)
+    except Exception as e:
+        print(f"Error fetching schedule: {e}")
+        return jsonify([])
 
 @app.route("/api/schedule_sync")
 def sync_schedule():
     group = request.args.get('group')
     if not group: return jsonify([])
-    schedule = planner.get_semester_schedule(group, request.args.get('subgroup', '0'))
-    cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{request.args.get('subgroup', '0')}.json")
-    if schedule:
-        try:
+    try:
+        schedule = planner.get_semester_schedule(group, request.args.get('subgroup', '0'))
+        cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{request.args.get('subgroup', '0')}.json")
+        if schedule:
             with open(cache_file, 'w', encoding='utf-8') as f: json.dump(schedule, f, ensure_ascii=False)
-        except Exception: pass
-    return jsonify(schedule)
+        return jsonify(schedule)
+    except Exception as e:
+        print(f"Error syncing schedule: {e}")
+        return jsonify([])
 
 @app.route("/api/friends", methods=["GET", "POST"])
 def manage_friends():
