@@ -73,16 +73,6 @@ async function renderCalendar() {
         scheduleByDate.get(it.date).push(it);
     });
 
-    // Загружаем заметки на неделю ЗАРАНЕЕ, чтобы отрисовать точки
-    let tasksByDate = {};
-    try {
-        let tasks = await apiLoadTasks(startStr, endStr);
-        tasks.forEach(t => {
-            if (!tasksByDate[t.date]) tasksByDate[t.date] = [];
-            tasksByDate[t.date].push(t);
-        });
-    } catch (e) { console.error("Tasks load failed", e); }
-
     const htmlParts = [];
     for (let i = 0; i < 7; i++) {
         let d = new Date(currentBaseDate);
@@ -98,48 +88,55 @@ async function renderCalendar() {
         
         let pairsCount = pairItems.length + customPairs.length;
         let eventsCount = eventItems.length;
-        let dayTasks = tasksByDate[dateStr] || [];
-
-        // Генерация точек-индикаторов
-        let dotsHtml = '';
-        dayTasks.forEach(t => {
-            let color = 'var(--status-green)';
-            if (t.status === 'orange') color = 'var(--status-orange)';
-            if (t.status === 'red') color = 'var(--status-red)';
-            if (t.status === 'completed') color = 'var(--status-completed)';
-            dotsHtml += `<span class="day-dot" style="background:${color}" title="${escapeHtml(t.text)}"></span>`;
-        });
-        eventItems.forEach(e => {
-            dotsHtml += `<span class="day-dot dot-event" title="${escapeHtml(e.lesson)}"></span>`;
+        
+        let cardsHtml = '';
+        let allItems = eventItems.concat(customPairs).concat(pairItems).sort(_sortItemsByTime);
+        allItems.forEach(item => {
+            if (item.is_event) cardsHtml += _renderEventCard(item);
+            else cardsHtml += _renderPairCard(item);
         });
 
         htmlParts.push(`
             <div class="day-col ${isTodayClass}" id="day-col-${dateStr}">
                 <div class="day-header"><span class="day-nav-center">${displayDate}</span></div>
                 
-                <div class="day-dots-row">
-                    ${dotsHtml || '<span class="text-muted" style="font-size:10px; opacity:0.5;">нет меток</span>'}
-                </div>
-
-                <div class="day-schedule-wrap mb-2 mt-1">
-                    ${pairsCount > 0 ? `
-                        <div class="schedule-summary shadow-sm" style="cursor:default;">
+                <div class="day-schedule-wrap mb-2">
+                    ${(pairsCount + eventsCount) > 0 ? `
+                        <div class="schedule-summary shadow-sm" onclick="toggleSchedule('${dateStr}')">
                             <span>🕒 ${pairsCount} ${plural(pairsCount, 'пара', 'пары', 'пар')}</span>
+                            ${eventsCount > 0 ? `<span class="ms-2 text-primary">🎯 ${eventsCount}</span>` : ''}
+                            <span id="arrow-${dateStr}" class="ms-2">▼</span>
+                        </div>
+                        <div id="schedule-details-${dateStr}" class="expanded">
+                            <div class="schedule-details-inner">${cardsHtml}</div>
                         </div>
                     ` : `<div class="empty-state-inline">☕ Свободно</div>`}
-                    ${eventsCount > 0 ? `<div class="badge bg-success w-100 mt-1">Событий: ${eventsCount}</div>` : ''}
+                    <button type="button" class="btn btn-sm btn-outline-success w-100 mt-1" style="font-size: 11px;" onclick="event.stopPropagation(); openCustomScheduleModal('${dateStr}')">+ Событие</button>
                 </div>
                 
-                <div class="day-tasks-wrap mt-auto">
-                    <button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-2"
+                <div class="day-tasks-wrap mt-2">
+                    <div id="tasks-${dateStr}" class="mb-1"></div>
+                    <div id="expand-btn-wrap-${dateStr}" style="display:none; text-align:center; margin-top:4px;">
+                        <button type="button" class="day-expand-btn" onclick="event.stopPropagation(); toggleExpandDay('${dateStr}')">
+                            <span class="day-expand-icon">▼</span>
+                            <span class="day-expand-label">Развернуть</span>
+                        </button>
+                    </div>
+                    <div id="task-input-wrap-${dateStr}" style="display:none; margin-top:6px;">
+                        <textarea id="task-input-${dateStr}" class="form-control form-control-sm" rows="2"
+                                  placeholder="Заметка..."
+                                  onkeydown="handleNewTask(event, '${dateStr}')"
+                                  onblur="handleTaskBlur('${dateStr}')"></textarea>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100 mt-1"
                             style="font-size: 11px;"
-                            onclick="event.stopPropagation(); openDayMode('${dateStr}')">Открыть день</button>
+                            onclick="event.stopPropagation(); toggleTaskInput('${dateStr}')">+ Заметка</button>
                 </div>
             </div>`);
     }
     cal.innerHTML = htmlParts.join('');
 
-    // Клик по колонке = развернуть день
+    // Клик по колонке = развернуть день (десктоп) / открыть вкладку «День» (мобилка)
     cal.querySelectorAll('.day-col').forEach(col => {
         col.addEventListener('click', (e) => {
             if (e.target.closest('button, a, textarea, input, .schedule-item, .schedule-summary')) return;
@@ -147,6 +144,11 @@ async function renderCalendar() {
             if (id && id.startsWith('day-col-')) openDayMode(id.slice('day-col-'.length));
         });
     });
+
+    try {
+        let tasks = await apiLoadTasks(startStr, endStr);
+        if (typeof renderTasksStaggered === 'function') renderTasksStaggered(tasks);
+    } catch (e) { console.error(e); }
 
     if (typeof _layoutScheduleNotes === 'function') _layoutScheduleNotes();
 
@@ -186,12 +188,17 @@ async function renderDayView() {
         allItems.forEach(item => {
             let isEvent = item.is_event || (item.is_custom && item.is_event);
             let typeBadge = isEvent ? 'Событие' : (item.type_name || 'Пара');
-            let bgColor = isEvent ? 'var(--event-color)' : (item.is_custom ? 'var(--custom-pair-color)' : 'var(--accent)');
+            let bgColor = isEvent ? 'var(--custom-pair-color)' : (item.is_custom ? 'var(--custom-pair-color)' : 'var(--accent)');
+            let editBtn = item.is_custom ? `<button class="btn btn-sm btn-link text-secondary p-0 ms-2" onclick="openCustomScheduleModal('${item.date}', ${item.custom_id})">✏️</button>` : '';
+            
             html += `
                 <div class="schedule-item shadow-sm mb-3" style="border-left: 4px solid ${bgColor}; padding: 12px;">
                     <div class="d-flex justify-content-between mb-2">
                         <strong class="text-primary" style="font-size: 1.1rem;">${item.time_range}</strong>
-                        <span class="badge bg-secondary">${typeBadge}</span>
+                        <div class="d-flex align-items-center">
+                            <span class="badge bg-secondary">${typeBadge}</span>
+                            ${editBtn}
+                        </div>
                     </div>
                     <div class="fw-bold mb-1" style="font-size: 1.1rem;">${escapeHtml(item.lesson)}</div>
                     ${item.teacher ? `<div class="text-muted small">👤 ${escapeHtml(item.teacher)}</div>` : ''}
@@ -206,11 +213,15 @@ async function renderDayView() {
         html += `<div class="text-center text-muted small mb-3">Заметок нет.</div>`;
     } else {
         dayTasks.forEach(t => {
-            let color = t.status === 'green' ? 'var(--status-green)' : (t.status === 'orange' ? 'var(--status-orange)' : 'var(--status-red)');
+            let color = t.status === 'green' ? 'var(--status-green)' : (t.status === 'orange' ? 'var(--status-orange)' : (t.status === 'red' ? 'var(--status-red)' : 'var(--status-completed)'));
             let isDone = t.status === 'completed';
             html += `
-                <div class="task-card mb-2 shadow-sm" style="border-left: 4px solid ${isDone ? 'var(--status-completed)' : color}; ${isDone ? 'opacity:0.6; text-decoration:line-through;' : ''}">
+                <div class="task-card mb-2 shadow-sm" style="border-left: 4px solid ${color}; ${isDone ? 'opacity:0.6; text-decoration:line-through;' : ''} cursor:pointer;" onclick="if(!${isDone}) toggleColor(${t.id}, '${t.status}')">
                     <div class="task-text" style="font-size: 0.95rem; white-space: pre-wrap;">${escapeHtml(t.text)}</div>
+                    <div class="d-flex justify-content-end mt-1 gap-2">
+                        ${!isDone ? `<a class="task-btn task-edit text-decoration-none" onclick="event.stopPropagation(); let newText = prompt('Изменить заметку:', '${escapeJsString(t.text)}'); if(newText && newText.trim() !== '') { updateTaskRequest({id: ${t.id}, date: '${t.date}', text: newText.trim(), status: '${t.status}'}); renderDayView(); }">✏️</a>` : ''}
+                        <a class="task-btn text-decoration-none" onclick="event.stopPropagation(); handleTaskDeleteClick({id: ${t.id}, date: '${t.date}', text: '${escapeJsString(t.text)}', status: '${t.status}'}); setTimeout(renderDayView, 300);">${isDone ? '🗑️' : '×'}</a>
+                    </div>
                 </div>
             `;
         });
