@@ -191,16 +191,45 @@ async function handleNotificationsToggle(checkbox) {
     saveSettingsFromUI();
 }
 
+// ------------------------------------------------------------
+//  ВНИМАНИЕ: В Android WebView Notification API почти всегда
+//  возвращает permission = 'granted', даже если нативное разрешение
+//  POST_NOTIFICATIONS не выдано. Поэтому проверяем через EzhNative.
+// ------------------------------------------------------------
+function _nativeNotifPermissionGranted() {
+    if (typeof window.EzhNative === 'undefined' || window.EzhNative === null) return null;
+    try { return window.EzhNative.hasNotificationPermission() === true; }
+    catch (e) { return false; }
+}
+
 function updateNotificationsHint() {
     let hint = document.getElementById('settingsNotifHint');
     if (!hint) return;
+
+    const nativeGranted = _nativeNotifPermissionGranted();
+    const advanceText = formatAdvanceText(notificationAdvance, notificationUnit);
+
+    // Android-мост активен — используем его как источник истины
+    if (nativeGranted !== null) {
+        if (!nativeGranted && notificationsEnabled) {
+            hint.style.display = 'block';
+            hint.textContent = 'Нужно разрешить уведомления в системе — приложение запросит его при следующем открытии.';
+        } else if (nativeGranted && notificationsEnabled) {
+            hint.style.display = 'block';
+            hint.textContent = `Готово. Напомним за ${advanceText} до начала события — уведомления работают, даже если приложение закрыто.`;
+        } else {
+            hint.style.display = 'none';
+        }
+        return;
+    }
+
+    // Fallback на Web Notifications (десктоп/браузер)
     if (!('Notification' in window)) {
         hint.style.display = 'block';
         hint.textContent = 'Ваш браузер не поддерживает уведомления.';
         return;
     }
     let perm = Notification.permission;
-    const advanceText = formatAdvanceText(notificationAdvance, notificationUnit);
 
     if (perm === 'denied') {
         hint.style.display = 'block';
