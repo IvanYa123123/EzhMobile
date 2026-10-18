@@ -110,4 +110,115 @@ function plural(n, one, few, many) {
     let mod10 = n % 10;
     let mod100 = n % 100;
     if (mod10 === 1 && mod100 !== 11) return one;
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+    return many;
+}
+
+function formatDuration(mins) {
+    if (mins < 1) return "меньше минуты";
+    if (mins < 60) return `${mins} ${plural(mins, 'минуту', 'минуты', 'минут')}`;
+    let h = Math.floor(mins / 60);
+    let m = mins % 60;
+    let hStr = `${h} ${plural(h, 'час', 'часа', 'часов')}`;
+    if (m === 0) return hStr;
+    return `${hStr} ${m} ${plural(m, 'минуту', 'минуты', 'минут')}`;
+}
+
+function formatDateRu(dateStr) {
+    let [y, m, d] = dateStr.split('-').map(Number);
+    let months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+    return `${d} ${months[m - 1]}`;
+}
+
+// ============================================================
+//  ДЛИТЕЛЬНОСТЬ С ТОЧНОСТЬЮ (для статус-строки)
+// ============================================================
+function formatDurationMs(ms, precision = 'min') {
+    if (!isFinite(ms) || ms < 0) return "0 секунд";
+
+    const MS_SEC = 1000;
+    const MS_MIN = 60 * MS_SEC;
+    const MS_HOUR = 60 * MS_MIN;
+    const MS_DAY = 24 * MS_HOUR;
+
+    if (ms >= MS_DAY) {
+        let days = Math.floor(ms / MS_DAY);
+        let hours = Math.floor((ms % MS_DAY) / MS_HOUR);
+        let dayStr = `${days} ${plural(days, 'день', 'дня', 'дней')}`;
+        if (hours === 0) return dayStr;
+        return `${dayStr} ${hours} ${plural(hours, 'час', 'часа', 'часов')}`;
+    }
+
+    let hours = Math.floor(ms / MS_HOUR);
+    let mins  = Math.floor((ms % MS_HOUR) / MS_MIN);
+    let secs  = Math.floor((ms % MS_MIN) / MS_SEC);
+    let cs    = Math.floor((ms % MS_SEC) / 10);
+
+    if (ms < MS_MIN) {
+        if (precision === 'min') return "меньше минуты";
+        if (precision === 'sec') return `${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`;
+        let csStr = String(cs).padStart(2, '0');
+        return `${secs}.${csStr} ${plural(secs, 'секунды', 'секунд', 'секунд')}`;
+    }
+
+    let parts = [];
+
+    if (hours > 0) {
+        parts.push(`${hours} ${plural(hours, 'час', 'часа', 'часов')}`);
+        parts.push(`${mins} ${plural(mins, 'минуту', 'минуты', 'минут')}`);
+    } else {
+        parts.push(`${mins} ${plural(mins, 'минуту', 'минуты', 'минут')}`);
+    }
+
+    if (precision === 'sec' || precision === 'cs') {
+        if (precision === 'sec') {
+            if (secs > 0 || hours > 0 || mins > 0) {
+                parts.push(`${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`);
+            }
+        } else {
+            let csStr = String(cs).padStart(2, '0');
+            parts.push(`${secs}.${csStr} ${plural(secs, 'секунды', 'секунд', 'секунд')}`);
+        }
+    }
+
+    return parts.join(' ');
+}
+
+// ============================================================
+//  ТЕМЫ
+// ============================================================
+function getThemeColor(varName, fallback = '#000000') {
+    try {
+        const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+        return v || fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+// ============================================================
+//  УВЕДОМЛЕНИЯ — форматирование интервала оповещения
+// ============================================================
+function formatAdvanceText(value, unit) {
+    const n = parseInt(value, 10) || 0;
+    const forms = {
+        min:  ['минуту', 'минуты', 'минут'],
+        hour: ['час',    'часа',   'часов'],
+        day:  ['день',   'дня',    'дней'],
+        week: ['неделю', 'недели', 'недель'],
+    };
+    const f = forms[unit] || forms.min;
+    return `${n} ${plural(n, f[0], f[1], f[2])}`;
+}
+
+function advanceToMs(value, unit) {
+    const n = parseInt(value, 10) || 0;
+    switch (unit) {
+        case 'hour': return n * 60 * 60 * 1000;
+        case 'day':  return n * 24 * 60 * 60 * 1000;
+        case 'week': return n * 7 * 24 * 60 * 60 * 1000;
+        case 'min':
+        default:     return n * 60 * 1000;
+    }
+}
