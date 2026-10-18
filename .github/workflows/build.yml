@@ -19,17 +19,25 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    # ОБЯЗАТЕЛЬНО ДЛЯ CHAQUOPY: Устанавливаем Python 3.11 на сервер
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    # Более надежный способ настройки Android SDK
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
     - name: Setup Gradle 8.9
       uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: '8.9'
 
-    # Просто принимаем лицензии у уже установленного SDK
     - name: Accept Android SDK licenses
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        yes | sdkmanager --licenses || true
 
-    # Создаем файл с путями
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > EzhAndroid/local.properties
 
