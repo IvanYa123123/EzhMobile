@@ -1,6 +1,10 @@
 import requests
+import urllib3
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Отключаем предупреждения об SSL, так как мы отключили проверку для Android
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class SevSUPlanner:
     def __init__(self):
@@ -11,10 +15,11 @@ class SevSUPlanner:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+        
+        # Фиксы для Android
+        self.session.trust_env = False 
+        self.session.verify = False 
 
-        # Retry-политика: 3 попытки с экспоненциальным backoff.
-        # pool_block=False — при исчерпании пула создаём временные соединения,
-        # чтобы 8 параллельных запросов не сериализовались.
         try:
             from requests.adapters import HTTPAdapter
             from urllib3.util.retry import Retry
@@ -46,15 +51,6 @@ class SevSUPlanner:
             8: "20:40 - 22:10"
         }
 
-        # КОДИРОВКА ТИПОВ ЗАНЯТИЙ В API СевГУ
-        # ------------------------------------
-        # Раньше здесь были перепутаны 1 и 2, из-за чего ПЗ отображался как ЛЗ
-        # и наоборот. Проверено сопоставлением с визуальной сеткой сайта
-        # schedule.sevsu.ru: 1 = ЛЗ, 2 = ПЗ.
-        #   0 — Лекция
-        #   1 — ЛЗ (лабораторное занятие)
-        #   2 — ПЗ (практическое занятие)
-        #   3 — Экзамен/Зачёт
         self.type_map = {0: "Лекция", 1: "ЛЗ", 2: "ПЗ", 3: "Экзамен/Зачет"}
 
         self.holidays = {
@@ -84,41 +80,29 @@ class SevSUPlanner:
     def get_schedule_for_week(self, group_name: str, week: int) -> list:
         params = {"v": "6.2", "section": "0", "group": group_name, "week": week}
         try:
-            response = self.session.get(self.api_url, params=params, timeout=5)
+            response = self.session.get(self.api_url, params=params, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("ok"):
                     return data.get("schedule") or []
-        except (requests.RequestException, ValueError):
-            pass
+        except Exception as e:
+            print(f"Schedule fetch error: {e}")
         return []
 
     def _fetch_weeks_parallel(self, group_name: str, weeks) -> dict:
-        """Параллельно тянет расписание для списка недель.
-
-        Раньше это был последовательный цикл из 25 запросов — холодный старт
-        занимал до 125 секунд. Теперь — обычно 3-6 секунд.
-        """
+        """В Android потоки работают нестабильно, поэтому качаем последовательно."""
         results = {}
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            future_to_week = {
-                ex.submit(self.get_schedule_for_week, group_name, w): w
-                for w in weeks
-            }
-            for fut in as_completed(future_to_week):
-                w = future_to_week[fut]
-                try:
-                    results[w] = fut.result()
-                except Exception:
-                    results[w] = []
+        for w in weeks:
+            try:
+                results[w] = self.get_schedule_for_week(group_name, w)
+            except Exception:
+                results[w] = []
         return results
 
     def get_semester_schedule(self, group_name: str, target_subgroup: str = "0",
                               max_weeks: int = 25) -> list:
         full_schedule = []
 
-        # Шаблон — самая полная неделя своей чётности, а не последняя.
-        # Иначе короткая экзаменационная неделя становится шаблоном.
         odd_template = None
         odd_template_week = None
         odd_template_len = 0
