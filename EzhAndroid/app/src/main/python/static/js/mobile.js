@@ -18,23 +18,31 @@
         document.body.setAttribute("data-mobile-tab", tab);
         try { localStorage.setItem(STORAGE_KEY, tab); } catch (e) {}
         updateNavActive(tab);
-        
+
         if (tab === 'day') {
             if (!window.expandedDayDateStr) {
                 const today = new Date();
-                const isCurrentWeek = new Date(currentBaseDate).toDateString() === new Date(today.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1))).toDateString();
+                const isCurrentWeek = new Date(currentBaseDate).toDateString() ===
+                    new Date(today.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1))).toDateString();
                 window.expandedDayDateStr = isCurrentWeek ? getLocalDateStr(new Date()) : getLocalDateStr(currentBaseDate);
             }
             if (typeof renderDayView === 'function') renderDayView();
         }
-        
+
         if (isMobile()) window.scrollTo({ top: 0, behavior: "smooth" });
     }
     window.switchMobileTab = switchTab;
 
     window.openDayMode = function(dateStr) {
-        window.expandedDayDateStr = dateStr;
-        switchTab('day');
+        if (isMobile()) {
+            window.expandedDayDateStr = dateStr;
+            switchTab('day');
+        } else {
+            // На десктопе разворачиваем день на всю ширину
+            if (typeof toggleExpandDay === 'function' && window.expandedDayDateStr !== dateStr) {
+                toggleExpandDay(dateStr);
+            }
+        }
     };
 
     window.checkOnboarding = function() {
@@ -46,7 +54,10 @@
 
         if (savedGroup) {
             if (bigHeader) bigHeader.style.display = 'none';
-            if (compactHeader) { compactHeader.classList.remove('d-none'); compactGroup.textContent = savedGroup; }
+            if (compactHeader) {
+                compactHeader.classList.remove('d-none');
+                compactGroup.textContent = savedGroup;
+            }
         } else {
             if (bigHeader) bigHeader.style.display = 'block';
             if (compactHeader) compactHeader.classList.add('d-none');
@@ -62,7 +73,10 @@
     window.ezhOnBackPressed = function() {
         const modals = document.querySelectorAll('.modal.show');
         if (modals.length > 0) {
-            modals.forEach(m => { const inst = bootstrap.Modal.getInstance(m); if (inst) inst.hide(); });
+            modals.forEach(m => {
+                const inst = bootstrap.Modal.getInstance(m);
+                if (inst) inst.hide();
+            });
             return true;
         }
         const currentTab = document.body.getAttribute('data-mobile-tab');
