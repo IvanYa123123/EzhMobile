@@ -29,8 +29,7 @@ function showStats() {
             <div class="stats-summary-item"><div class="stats-summary-num stats-summary-past">${totalPast}</div><div class="stats-summary-label">Прошло</div></div>
             <div class="stats-summary-item"><div class="stats-summary-num stats-summary-future">${totalFuture}</div><div class="stats-summary-label">Осталось</div></div>
         </div>
-        <div class="stats-grid">
-    `;
+        <div class="stats-grid">`;
 
     for (let subject in stats) {
         let subj = stats[subject];
@@ -106,7 +105,14 @@ async function saveAllLabs() {
         if (comp > tot) comp = tot;
         payload.push({ group, subject, completed: comp, total: tot });
     });
-    try { await apiSaveLabs(payload); } catch (e) { return alert("Не удалось сохранить лабы"); }
+    
+    try { 
+        await apiSaveLabs(payload); 
+    } catch (e) { 
+        console.error("Save error:", e);
+        return alert("Ошибка сохранения: " + (e.message || "неизвестно")); 
+    }
+    
     await updateLabsCache();
     renderCharts();
     let modal = bootstrap.Modal.getInstance(document.getElementById('labsModal'));
