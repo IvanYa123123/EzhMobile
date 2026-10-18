@@ -1,5 +1,3 @@
-// Виджеты: графики Chart.js, управление лабами, модалка статистики.
-
 async function updateLabsCache() {
     const group = document.getElementById("groupSelect").value.trim();
     if (!group) return;
@@ -275,7 +273,6 @@ function renderLabPacing() {
         hasData = true;
 
         let stats = scheduleStats[subj];
-
         let expectedCount = 0;
         if (stats.total > 0) {
             if (stats.passed >= stats.total) expectedCount = data.total;
@@ -284,10 +281,7 @@ function renderLabPacing() {
         if (expectedCount > data.total) expectedCount = data.total;
         if (expectedCount < 0) expectedCount = 0;
         
-        // ФИКС: Если 0, но лабы есть — ставим минимум 1
-        if (expectedCount === 0 && data.total > 0) {
-            expectedCount = 1;
-        }
+        if (expectedCount === 0 && data.total > 0) expectedCount = 1;
 
         const actualCount = data.completed;
         let level = 'is-empty';
@@ -295,9 +289,7 @@ function renderLabPacing() {
             if (actualCount >= expectedCount) level = 'is-ok';
             else if (actualCount * 2 >= expectedCount) level = 'is-warn';
             else level = 'is-danger';
-        } else if (actualCount > 0) {
-            level = 'is-ok';
-        }
+        } else if (actualCount > 0) level = 'is-ok';
 
         const displaySubj = getDisplaySubjectKey(subj);
         const safeSubj = escapeJsString(subj);
@@ -305,9 +297,7 @@ function renderLabPacing() {
         html += `
             <div class="pacing-row" title="Открыть список лаб" onclick="openLabItemsModal('${safeSubj}')">
                 <span class="pacing-row-title">${escapeHtml(displaySubj)}</span>
-                <span class="pacing-row-counts ${level}">
-                    <span class="pacing-num-actual">${actualCount}</span><span class="pacing-num-sep">/</span><span class="pacing-num-plan">${expectedCount}</span>
-                </span>
+                <span class="pacing-row-counts ${level}"><span class="pacing-num-actual">${actualCount}</span><span class="pacing-num-sep">/</span><span class="pacing-num-plan">${expectedCount}</span></span>
             </div>`;
     }
     container.innerHTML = hasData ? html : '<div class="text-center text-muted small mt-2">Нет данных</div>';
