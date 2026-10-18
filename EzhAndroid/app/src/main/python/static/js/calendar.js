@@ -63,7 +63,7 @@ async function renderCalendar() {
                 <div class="day-header"><span class="day-nav-center">${displayDate}</span></div>
                 <div class="day-schedule-wrap mb-2">
                     ${pairItems.length > 0 ? `<div class="schedule-summary shadow-sm">🕒 ${pairItems.length} пар</div>` : ''}
-                    ${eventItems.length > 0 ? `<div class="badge bg-success w-100">Событий: ${eventItems.length}</div>` : ''}
+                    ${eventItems.length > 0 ? `<div class="badge bg-success w-100 mb-1">Событий: ${eventItems.length}</div>` : ''}
                     ${pairItems.length === 0 && eventItems.length === 0 ? `<div class="empty-state-inline">☕ Свободно</div>` : ''}
                 </div>
                 <div id="tasks-${dateStr}" class="mt-2"></div>
@@ -76,23 +76,24 @@ async function renderCalendar() {
         if (typeof renderTasksStaggered === 'function') renderTasksStaggered(tasks);
     } catch (e) { console.error(e); }
 
-    renderFriendsCalendar();
+    if (typeof renderFriendsCalendar === 'function') renderFriendsCalendar();
     if (typeof renderTeachersCalendars === 'function') renderTeachersCalendars();
     if (typeof renderMiniCalendar === 'function') renderMiniCalendar();
+    if (typeof checkOnboarding === 'function') checkOnboarding();
 }
 
 // Рендер полного дня для вкладки "День"
 function renderDayView() {
     const container = document.getElementById('dayViewContent');
     const title = document.getElementById('dayViewTitle');
-    if (!container || !expandedDayDateStr) return;
+    if (!container || !window.expandedDayDateStr) return;
 
-    let [y, m, d] = expandedDayDateStr.split('-').map(Number);
+    let [y, m, d] = window.expandedDayDateStr.split('-').map(Number);
     let dateObj = new Date(y, m - 1, d);
     title.textContent = dateObj.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 
-    let pairItems = cachedSchedule.filter(x => x.date === expandedDayDateStr).sort(_sortItemsByTime);
-    let eventItems = getCustomItemsForDate(expandedDayDateStr).filter(x => x.is_event);
+    let pairItems = cachedSchedule.filter(x => x.date === window.expandedDayDateStr).sort(_sortItemsByTime);
+    let eventItems = getCustomItemsForDate(window.expandedDayDateStr).filter(x => x.is_event);
     let allItems = eventItems.concat(pairItems);
 
     if (allItems.length === 0) {
@@ -116,17 +117,13 @@ function renderDayView() {
         });
         container.innerHTML = html;
     }
-    // Дублируем задачи в режим дня
-    if (typeof renderTasksStaggered === 'function') {
-        apiLoadTasks(expandedDayDateStr, expandedDayDateStr).then(tasks => renderTasksStaggered(tasks));
-    }
 }
 
 function navigateDay(offset) {
-    if (!expandedDayDateStr) return;
-    let [y, m, d] = expandedDayDateStr.split('-').map(Number);
+    if (!window.expandedDayDateStr) return;
+    let [y, m, d] = window.expandedDayDateStr.split('-').map(Number);
     let target = new Date(y, m - 1, d);
     target.setDate(target.getDate() + offset);
-    expandedDayDateStr = getLocalDateStr(target);
+    window.expandedDayDateStr = getLocalDateStr(target);
     renderDayView();
 }
