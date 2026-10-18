@@ -27,10 +27,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 
 public class MainActivity extends AppCompatActivity {
-
     private static final String TAG = "Ezh";
     private static final int PORT = 5000;
-
     private WebView webView;
     private View splash;
     private TextView splashStatus;
@@ -40,7 +38,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         webView = findViewById(R.id.webView);
         splash = findViewById(R.id.splash);
         splashStatus = findViewById(R.id.splashStatus);
@@ -51,15 +48,9 @@ public class MainActivity extends AppCompatActivity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setAllowFileAccess(false);
-        s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        s.setLoadWithOverviewMode(true);
-        s.setUseWideViewPort(true);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setUserAgentString(s.getUserAgentString() + " EzhAndroid/1.1.0");
-
         webView.setBackgroundColor(Color.WHITE);
 
         webView.setWebViewClient(new WebViewClient() {
@@ -70,20 +61,11 @@ public class MainActivity extends AppCompatActivity {
                     webView.setVisibility(View.VISIBLE);
                 }).start();
             }
-            @Override
-            public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-                Log.e(TAG, "WebView error: " + err.getDescription());
-            }
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) { request.grant(request.getResources()); }
-            @Override
-            public boolean onConsoleMessage(ConsoleMessage msg) {
-                Log.d(TAG, msg.message() + " @" + msg.lineNumber());
-                return true;
-            }
         });
 
         startPythonServer();
@@ -99,17 +81,10 @@ public class MainActivity extends AppCompatActivity {
                 py.getModule("android_server").callAttr("start_server", dataDir.getAbsolutePath());
             } catch (final Exception e) {
                 Log.e(TAG, "Python server failed", e);
-                StringWriter sw = new StringWriter();
-                PrintWriter pw = new PrintWriter(sw);
-                e.printStackTrace(pw);
-                Throwable rootCause = e;
-                while (rootCause.getCause() != null) rootCause = rootCause.getCause();
+                StringWriter sw = new StringWriter(); e.printStackTrace(new PrintWriter(sw));
+                Throwable rootCause = e; while (rootCause.getCause() != null) rootCause = rootCause.getCause();
                 final String rootMsg = rootCause.toString();
-                runOnUiThread(() -> {
-                    String msg = "ОШИБКА PYTHON:\n" + rootMsg;
-                    if (msg.length() > 400) msg = msg.substring(0, 400) + "...";
-                    splashStatus.setText(msg);
-                });
+                runOnUiThread(() -> splashStatus.setText("ОШИБКА PYTHON:\n" + rootMsg));
             }
         }, "py-server").start();
     }
@@ -121,7 +96,7 @@ public class MainActivity extends AppCompatActivity {
                     Socket sock = new Socket();
                     sock.connect(new InetSocketAddress("127.0.0.1", PORT), 200);
                     sock.close();
-                    runOnUiThread(this::loadWebView);
+                    runOnUiThread(() -> { webView.setVisibility(View.VISIBLE); webView.loadUrl("http://127.0.0.1:" + PORT + "/"); });
                     return;
                 } catch (Exception ignored) {
                     final int step = i;
@@ -129,40 +104,20 @@ public class MainActivity extends AppCompatActivity {
                     try { Thread.sleep(300); } catch (InterruptedException e) { return; }
                 }
             }
-            runOnUiThread(() -> {
-                if (splashStatus.getText().toString().contains("Почти готово")) {
-                    splashStatus.setText("Сервер не отвечает. Перезапустите приложение.");
-                }
-            });
-        }, "py-poller").start();
-    }
-
-    private void loadWebView() {
-        webView.setVisibility(View.VISIBLE);
-        webView.loadUrl("http://127.0.0.1:" + PORT + "/");
+        }).start();
     }
 
     @Override
     public void onBackPressed() {
         if (webView != null) {
-            // Отправляем событие в JS. Если он вернет "true", значит он обработал кнопку (закрыл модалку/вкладку).
             webView.evaluateJavascript("window.ezhOnBackPressed ? window.ezhOnBackPressed() : false", value -> {
                 if (!"true".equals(value)) {
-                    if (webView.canGoBack()) {
-                        webView.goBack();
-                    } else {
-                        super.onBackPressed();
-                    }
+                    if (webView.canGoBack()) webView.goBack();
+                    else super.onBackPressed();
                 }
             });
         } else {
             super.onBackPressed();
         }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (webView != null) { webView.destroy(); webView = null; }
     }
 }
