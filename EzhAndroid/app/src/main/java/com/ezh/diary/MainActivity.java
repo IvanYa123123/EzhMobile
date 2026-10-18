@@ -32,6 +32,7 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private View splash;
     private TextView splashStatus;
+    private EzhBridge bridge;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -42,7 +43,11 @@ public class MainActivity extends AppCompatActivity {
         splash = findViewById(R.id.splash);
         splashStatus = findViewById(R.id.splashStatus);
 
-        ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+        ActivityCompat.requestPermissions(this,
+                new String[]{
+                        android.Manifest.permission.POST_NOTIFICATIONS,
+                        android.Manifest.permission.SCHEDULE_EXACT_ALARM
+                }, 1);
 
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -50,8 +55,13 @@ public class MainActivity extends AppCompatActivity {
         s.setDatabaseEnabled(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
-        s.setUserAgentString(s.getUserAgentString() + " EzhAndroid/1.1.0");
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
+        s.setUserAgentString(s.getUserAgentString() + " EzhAndroid/0.62");
         webView.setBackgroundColor(Color.WHITE);
+
+        bridge = new EzhBridge(this);
+        webView.addJavascriptInterface(bridge, "EzhNative");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -61,11 +71,31 @@ public class MainActivity extends AppCompatActivity {
                     webView.setVisibility(View.VISIBLE);
                 }).start();
             }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request.isForMainFrame()) {
+                    Log.e(TAG, "WebView main-frame error: " + error.getDescription());
+                    runOnUiThread(() -> {
+                        if (splashStatus != null) {
+                            splashStatus.setText("Ошибка загрузки: " + error.getDescription());
+                        }
+                    });
+                }
+            }
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
-            public void onPermissionRequest(final PermissionRequest request) { request.grant(request.getResources()); }
+            public void onPermissionRequest(final PermissionRequest request) {
+                request.grant(request.getResources());
+            }
+
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage msg) {
+                Log.d(TAG, "JS: " + msg.message() + " @" + msg.lineNumber());
+                return true;
+            }
         });
 
         startPythonServer();
@@ -76,13 +106,15 @@ public class MainActivity extends AppCompatActivity {
         final File dataDir = getFilesDir();
         new Thread(() -> {
             try {
-                runOnUiThread(() -> splashStatus.setText("Запуск Python сервера..."));
+                runOnUiThread(() -> splashStatus.setText("Запуск Python-сервера..."));
                 Python py = Python.getInstance();
                 py.getModule("android_server").callAttr("start_server", dataDir.getAbsolutePath());
             } catch (final Exception e) {
                 Log.e(TAG, "Python server failed", e);
-                StringWriter sw = new StringWriter(); e.printStackTrace(new PrintWriter(sw));
-                Throwable rootCause = e; while (rootCause.getCause() != null) rootCause = rootCause.getCause();
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                Throwable rootCause = e;
+                while (rootCause.getCause() != null) rootCause = rootCause.getCause();
                 final String rootMsg = rootCause.toString();
                 runOnUiThread(() -> splashStatus.setText("ОШИБКА PYTHON:\n" + rootMsg));
             }
@@ -91,19 +123,25 @@ public class MainActivity extends AppCompatActivity {
 
     private void pollServerAndLoad() {
         new Thread(() -> {
-            for (int i = 0; i < 60; i++) {
+            for (int i = 0; i < 80; i++) {
                 try {
                     Socket sock = new Socket();
                     sock.connect(new InetSocketAddress("127.0.0.1", PORT), 200);
                     sock.close();
-                    runOnUiThread(() -> { webView.setVisibility(View.VISIBLE); webView.loadUrl("http://127.0.0.1:" + PORT + "/"); });
+                    runOnUiThread(() -> {
+                        webView.setVisibility(View.VISIBLE);
+                        webView.loadUrl("http://127.0.0.1:" + PORT + "/");
+                    });
                     return;
                 } catch (Exception ignored) {
                     final int step = i;
-                    runOnUiThread(() -> { if (step > 5) splashStatus.setText("Почти готово…"); });
+                    runOnUiThread(() -> {
+                        if (step > 5) splashStatus.setText("Почти готово…");
+                    });
                     try { Thread.sleep(300); } catch (InterruptedException e) { return; }
                 }
             }
+            runOnUiThread(() -> splashStatus.setText("Сервер не запустился за 24 секунды."));
         }).start();
     }
 
