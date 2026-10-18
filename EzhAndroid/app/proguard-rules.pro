@@ -1,2 +1,5 @@
--keep class com.chaquo.python.** { *; }
--keep class com.ezh.diary.** { *; }
+-keep class com.ezh.diary.EzhBridge { *; }
+-keep class com.ezh.diary.NotificationReceiver { *; }
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
