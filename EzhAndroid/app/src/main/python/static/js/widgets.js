@@ -281,7 +281,10 @@ function renderLabPacing() {
         if (expectedCount > data.total) expectedCount = data.total;
         if (expectedCount < 0) expectedCount = 0;
         
-        if (expectedCount === 0 && data.total > 0) expectedCount = 1;
+        // ФИКС 0/1
+        if (expectedCount === 0 && data.total > 0) {
+            expectedCount = 1;
+        }
 
         const actualCount = data.completed;
         let level = 'is-empty';
