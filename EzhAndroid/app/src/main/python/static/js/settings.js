@@ -34,10 +34,6 @@ function openSettingsModal() {
     document.getElementById('settingsToggleWidgetPacing').checked  = showWidgetPacing;
     document.getElementById('settingsToggleWidgetNotes').checked   = showWidgetNotes;
 
-    document.getElementById('settingsToggleSeparateFriendsTeachers').checked = separateFriendsTeachers;
-    document.getElementById('settingsToggleFriendsSection').checked  = showFriendsSection;
-    document.getElementById('settingsToggleTeachersSection').checked = showTeachersSection;
-
     document.getElementById('settingsStatusFormat').value    = statusFormat;
     document.getElementById('settingsStatusPrecision').value = statusPrecision;
 
@@ -123,22 +119,7 @@ function saveSettingsFromUI() {
     localStorage.setItem('showWidgetPacing',  showWidgetPacing);
     localStorage.setItem('showWidgetNotes',   showWidgetNotes);
 
-    separateFriendsTeachers = document.getElementById('settingsToggleSeparateFriendsTeachers').checked;
-    showFriendsSection  = document.getElementById('settingsToggleFriendsSection').checked;
-    showTeachersSection = document.getElementById('settingsToggleTeachersSection').checked;
-
-    localStorage.setItem('separateFriendsTeachers', separateFriendsTeachers);
-    localStorage.setItem('showFriendsSection',  showFriendsSection);
-    localStorage.setItem('showTeachersSection', showTeachersSection);
-
     applyWidgetVisibility();
-    if (typeof applyFriendsTeachersVisibility === 'function') applyFriendsTeachersVisibility();
-
-    // Если переключились на объединённый режим — подтягиваем скрытую
-    // секцию в ту же зону, где лежит видимая, чтобы избежать «прыжка».
-    if (typeof _syncFriendsTeachersZone === 'function') {
-        try { _syncFriendsTeachersZone(); } catch (e) {}
-    }
 
     statusFormat = document.getElementById('settingsStatusFormat').value;
     if (!['interval', 'both', 'time'].includes(statusFormat)) statusFormat = 'interval';
