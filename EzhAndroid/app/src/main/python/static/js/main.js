@@ -30,6 +30,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             renderCalendar();
             renderCharts();
             renderMiniCalendar();
+            renderSyncFreshness();
             hideGlobalLoader();
             fetchFriends();
         }
@@ -153,6 +154,7 @@ async function fetchSemesterData() {
     fetchFriends();
     updateScheduleStatus();
     refreshNotifications();
+    renderSyncFreshness();
     syncSemesterData(group, subgroup);
 }
 
@@ -160,7 +162,12 @@ async function syncSemesterData(group, subgroup) {
     try {
         let newData = applyTimeFix(await apiSyncSchedule(group, subgroup));
 
-        if (!Array.isArray(newData) || newData.length === 0) return;
+        if (!Array.isArray(newData) || newData.length === 0) {
+            // Бэкенд ответил пустым — значит расписание ещё «свежее»,
+            // СевГУ не дёргали. Просто перерисуем индикатор.
+            if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
+            return;
+        }
 
         if (cachedSchedule && cachedSchedule.length > 0
             && newData.length < cachedSchedule.length * 0.9) {
@@ -168,6 +175,7 @@ async function syncSemesterData(group, subgroup) {
             return;
         }
 
+        // Это была реальная синхронизация — фиксируем время.
         if (typeof saveSyncTime === 'function') {
             saveSyncTime(group, subgroup);
         }
@@ -183,9 +191,13 @@ async function syncSemesterData(group, subgroup) {
 
         if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
 
+        // Друзья в фоне
+        if (typeof syncFriendsSchedules === 'function') {
+            syncFriendsSchedules(false).catch(e => console.error('[sync] friends sync failed', e));
+        }
+
     } catch (e) {
-        // 429 в фоновой синхронизации не критичен: пользователь
-        // этого не видит, следующий F5 или manualRefresh подтянет.
+        // 429 в фоновой синхронизации не критичен.
         const status = _extractHttpStatus(e);
         if (status === 429) {
             console.warn("[sync] rate-limited, попробуем позже");
