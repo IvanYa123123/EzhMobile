@@ -4,8 +4,54 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M32,28 h44 a4,4 0 0 1 4,4 v44 a4,4 0 0 1 -4,4 h-44 a4,4 0 0 1 -4,-4 v-44 a4,4 0 0 1 4,-4 z" />
-    <path android:fillColor="#6366F1"
-        android:pathData="M40,42 h28 v4 h-28 z M40,52 h28 v4 h-28 z M40,62 h18 v4 h-18 z" />
+    
+    <!-- Иголки -->
+    <path
+        android:fillColor="#6B3F1A"
+        android:strokeColor="#2A1505"
+        android:strokeWidth="2"
+        android:pathData="M42,52 L46,36 L52,48 L56,33 L61,46 L66,35 L70,49 L76,40 L78,54 L84,48 L80,64 L70,68 Z" />
+        
+    <!-- Тело -->
+    <path
+        android:fillColor="#F5D9A8"
+        android:strokeColor="#2A1505"
+        android:strokeWidth="2"
+        android:pathData="M28,64 Q28,46 45,46 L65,46 Q82,46 82,64 Q82,80 55,80 Q28,80 28,64 Z" />
+
+    <!-- Мордочка (носик) -->
+    <path
+        android:fillColor="#F5D9A8"
+        android:strokeColor="#2A1505"
+        android:strokeWidth="2"
+        android:pathData="M28,64 Q22,64 22,68 Q22,74 30,74 Z" />
+
+    <!-- Носик (черная точка) -->
+    <path
+        android:fillColor="#2A1505"
+        android:pathData="M21,68 A2,2 0 1,1 25,68 A2,2 0 1,1 21,68 Z" />
+
+    <!-- Глаз -->
+    <path
+        android:fillColor="#2A1505"
+        android:pathData="M34,61 A2.5,2.5 0 1,1 39,61 A2.5,2.5 0 1,1 34,61 Z" />
+
+    <!-- Румянец -->
+    <path
+        android:fillColor="#F28B8B"
+        android:fillAlpha="0.6"
+        android:pathData="M38,70 A4,3 0 1,1 46,70 A4,3 0 1,1 38,70 Z" />
+
+    <!-- Лапки -->
+    <path
+        android:fillColor="#DCB87C"
+        android:strokeColor="#2A1505"
+        android:strokeWidth="1.5"
+        android:pathData="M42,79 A4,3 0 1,1 50,79 A4,3 0 1,1 42,79 Z" />
+    <path
+        android:fillColor="#DCB87C"
+        android:strokeColor="#2A1505"
+        android:strokeWidth="1.5"
+        android:pathData="M58,79 A4,3 0 1,1 66,79 A4,3 0 1,1 58,79 Z" />
+        
 </vector>
