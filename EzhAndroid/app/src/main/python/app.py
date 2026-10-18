@@ -18,9 +18,11 @@ from teacher_planner import SevSUTeacherPlanner
 
 _ANDROID_DATA = os.environ.get('EZH_DATA_DIR')
 if _ANDROID_DATA:
-    BASE_DIR, BUNDLE_DIR = _ANDROID_DATA, os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = _ANDROID_DATA
+    BUNDLE_DIR = os.path.dirname(os.path.realpath(__file__))  # ИСПРАВЛЕНО!
 else:
-    BASE_DIR, BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__)), os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BUNDLE_DIR = BASE_DIR
 
 DB_FILE = os.path.join(BASE_DIR, "planner.db")
 SCHEDULES_DIR = os.path.join(BASE_DIR, "schedules")
@@ -33,6 +35,11 @@ APP_VERSION = "dev"
 try:
     with open(os.path.join(BASE_DIR, "VERSION"), "r", encoding="utf-8") as f: APP_VERSION = f.read().strip() or "dev"
 except OSError: pass
+
+def _safe_print(*args, **kwargs):
+    try:
+        if sys.stdout is not None: print(*args, **kwargs)
+    except Exception: pass
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR, static_url_path='/static')
 planner = SevSUPlanner()
@@ -110,12 +117,14 @@ def get_groups():
     try:
         with open(GROUPS_FILE, 'r', encoding='utf-8') as f: 
             groups = [line.strip() for line in f if line.strip()]
-    except OSError: pass
-    
+    except OSError as e:
+        _safe_print(f"[groups] Ошибка чтения {GROUPS_FILE}: {e}")
+
     if not groups:
+        _safe_print("[groups] Group.txt пуст или не найден, качаем с сайта...")
         try:
             params = {"v": "6.2", "section": "0"}
-            r = planner.session.get(planner.groups_api, params=params, timeout=5)
+            r = planner.session.get(planner.groups_api, params=params, timeout=10)
             if r.status_code == 200:
                 data = r.json()
                 if isinstance(data, list):
@@ -124,7 +133,7 @@ def get_groups():
                     else:
                         groups = data
         except Exception as e: 
-            print("Failed to load groups from web:", e)
+            _safe_print(f"[groups] Failed to load groups from web: {e}")
 
     seen = set(groups)
     for name in load_custom_groups():
