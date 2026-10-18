@@ -107,13 +107,11 @@ def index(): return render_template("index.html")
 @app.route("/api/groups")
 def get_groups():
     groups = []
-    # 1. Пытаемся прочитать Group.txt
     try:
         with open(GROUPS_FILE, 'r', encoding='utf-8') as f: 
             groups = [line.strip() for line in f if line.strip()]
     except OSError: pass
     
-    # 2. Если файла нет — качаем с сайта
     if not groups:
         try:
             params = {"v": "6.2", "section": "0"}
@@ -121,11 +119,13 @@ def get_groups():
             if r.status_code == 200:
                 data = r.json()
                 if isinstance(data, list):
-                    groups = data
+                    if len(data) > 0 and isinstance(data[0], dict):
+                        groups = [item.get('name') or item.get('title') or str(item) for item in data]
+                    else:
+                        groups = data
         except Exception as e: 
             print("Failed to load groups from web:", e)
 
-    # 3. Добавляем кастомные группы
     seen = set(groups)
     for name in load_custom_groups():
         if name not in seen: seen.add(name); groups.append(name)
@@ -266,8 +266,6 @@ def get_schedule_all():
         cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{request.args.get('subgroup', '0')}.json")
         if os.path.exists(cache_file):
             with open(cache_file, 'r', encoding='utf-8') as f: return jsonify(json.load(f))
-        
-        # Защита от падения сервера при сетевых ошибках
         schedule = planner.get_semester_schedule(group, request.args.get('subgroup', '0'))
         return jsonify(schedule)
     except Exception as e:
