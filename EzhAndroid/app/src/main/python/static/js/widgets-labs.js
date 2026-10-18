@@ -60,7 +60,11 @@ async function saveAllLabs() {
         if (comp > tot) comp = tot;
         payload.push({ group, subject, completed: comp, total: tot });
     });
-    try { await apiSaveLabs(payload); } catch (e) { return alert("Не удалось сохранить лабы"); }
+    try {
+        await apiSaveLabs(payload);
+    } catch (e) {
+        return alert("Не удалось сохранить лабы");
+    }
     await updateLabsCache();
     renderCharts();
     let modal = bootstrap.Modal.getInstance(document.getElementById('labsModal'));
@@ -108,7 +112,7 @@ function _renderLabStatsDetails() {
 // ------------------------------------------------------------
 //  Сравнивает фактические сдачи с «планом»: сколько пар предмета
 //  уже прошло — столько лаб и должно быть сдано (пропорционально).
-//  Клик по строке открывает поштучный список (lab-items.js).
+//  До первой пары план = 0 (а не 1 — принудительная единица убрана).
 // ============================================================
 
 function renderLabPacing() {
@@ -142,14 +146,10 @@ function renderLabPacing() {
         hasData = true;
 
         let stats = scheduleStats[subj];
-
         let expectedCount = 0;
         if (stats.total > 0) {
-            if (stats.passed >= stats.total) {
-                expectedCount = data.total;
-            } else {
-                expectedCount = Math.floor(data.total * stats.passed / stats.total);
-            }
+            if (stats.passed >= stats.total) expectedCount = data.total;
+            else expectedCount = Math.floor(data.total * stats.passed / stats.total);
         }
         if (expectedCount > data.total) expectedCount = data.total;
         if (expectedCount < 0) expectedCount = 0;
