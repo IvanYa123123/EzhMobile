@@ -1,6 +1,6 @@
 import os, sys, json, time, gzip, re, sqlite3, secrets, threading, hashlib
 from datetime import datetime, timezone
-from flask import Flask, render_template, request, jsonify, g, Response
+from flask import Flask, send_from_directory, request, jsonify, g, Response
 
 try:
     from flask_limiter import Limiter
@@ -29,16 +29,15 @@ SCHEDULES_DIR = os.path.join(BASE_DIR, "schedules")
 CUSTOM_GROUPS_FILE = os.path.join(BASE_DIR, "custom_groups.json")
 SYNC_TIMES_FILE = os.path.join(BASE_DIR, ".sync_times.json")
 GROUPS_FILE = os.path.join(BUNDLE_DIR, "Group.txt")
-TEMPLATES_DIR = os.path.join(BUNDLE_DIR, "templates")
 STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 
 # Как часто разрешаем реальный запрос в СевГУ при /api/schedule_sync без force=1
 MIN_SYNC_INTERVAL = 6 * 3600
 
-APP_VERSION = "0.62"
+APP_VERSION = "0.7"
 try:
     with open(os.path.join(BASE_DIR, "VERSION"), "r", encoding="utf-8") as f:
-        APP_VERSION = f.read().strip() or "0.62"
+        APP_VERSION = f.read().strip() or "0.7"
 except OSError:
     pass
 
@@ -49,39 +48,31 @@ def _safe_print(*args, **kwargs):
     except Exception:
         pass
 
-app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR, static_url_path='/static')
+app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static')
 planner = SevSUPlanner()
 teacher_planner = SevSUTeacherPlanner(BASE_DIR)
 os.makedirs(SCHEDULES_DIR, exist_ok=True)
 
 limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["300 per minute"], storage_uri="memory://", strategy="fixed-window")
 
-@app.before_request
-def _generate_csp_nonce():
-    g.csp_nonce = '' if request.path.startswith('/static/') else secrets.token_urlsafe(16)
-
-@app.context_processor
-def _inject_nonce(): return {"csp_nonce": getattr(g, "csp_nonce", "")}
-
-@app.context_processor
-def _inject_version(): return {"app_version": APP_VERSION}
-
 @app.after_request
 def _headers(response):
-    nonce = getattr(g, "csp_nonce", "")
-    script_src = f"script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net" if nonce else "script-src 'self' https://cdn.jsdelivr.net"
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    else:
+        response.headers['Cache-Control'] = 'no-store'
+
     csp = [
         "default-src 'self'",
-        script_src,
-        "script-src-attr 'unsafe-inline'",
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com data:",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self' data:",
         "img-src 'self' data: blob:",
-        "connect-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+        "connect-src 'self' http://127.0.0.1:5000",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
-        "frame-ancestors 'none'"
+        "frame-ancestors 'none'",
     ]
     response.headers['Content-Security-Policy'] = "; ".join(csp)
     return response
@@ -242,7 +233,7 @@ def health():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return send_from_directory(STATIC_DIR, 'index.html')
 
 # ============================================================
 #  GROUPS
@@ -548,7 +539,6 @@ def sync_schedule():
     force = request.args.get('force') == '1'
     sync_key = f"{group}_{subgroup}"
 
-    # Если force не задан и синкали недавно — не дёргаем СевГУ.
     if not force and not _needs_sync(sync_key):
         return jsonify([])
 
@@ -557,7 +547,6 @@ def sync_schedule():
         cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{subgroup}.json")
 
         if schedule:
-            # Защита от затирания: если СевГУ вернул огрызок — отдаём старый кэш.
             if os.path.exists(cache_file):
                 try:
                     with open(cache_file, 'r', encoding='utf-8') as f:
@@ -580,8 +569,6 @@ def sync_schedule():
 
             _mark_synced(sync_key)
         else:
-            # Пустой ответ — не считаем «свежим». Помечаем только если кэша нет,
-            # чтобы не дёргать СевГУ по кругу на группе без пар.
             if not os.path.exists(cache_file):
                 _mark_synced(sync_key)
 
