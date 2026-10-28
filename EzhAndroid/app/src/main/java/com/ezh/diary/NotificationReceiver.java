@@ -21,7 +21,8 @@ public class NotificationReceiver extends BroadcastReceiver {
         String id = intent.getStringExtra("id");
         if (title == null) return;
 
-        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        NotificationManager nm = (NotificationManager)
+                ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
 
         if (Build.VERSION.SDK_INT >= 26) {
@@ -33,7 +34,8 @@ public class NotificationReceiver extends BroadcastReceiver {
             nm.createNotificationChannel(ch);
         }
 
-        Intent launch = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
+        Intent launch = ctx.getPackageManager()
+                .getLaunchIntentForPackage(ctx.getPackageName());
         if (launch == null) {
             launch = new Intent(ctx, MainActivity.class);
         }
@@ -44,7 +46,7 @@ public class NotificationReceiver extends BroadcastReceiver {
         PendingIntent pi = PendingIntent.getActivity(ctx, 0, launch, pflags);
 
         NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_stat_ezh)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
