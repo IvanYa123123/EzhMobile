@@ -65,11 +65,6 @@ async function ensureGroupsLoaded() {
     } catch (e) { console.log("Справочник групп недоступен."); }
 }
 
-// ------------------------------------------------------------
-//  Разбор ошибок от api.js. Все обёртки бросают Error с
-//  текстом "HTTP NNN for <url>", поэтому статус достаём
-//  регуляркой.
-// ------------------------------------------------------------
 function _extractHttpStatus(err) {
     if (!err) return null;
     if (typeof err.status === 'number') return err.status;
@@ -114,7 +109,8 @@ async function fetchSemesterData() {
     localStorage.setItem('savedGroup', group);
     localStorage.setItem('savedSubgroup', subgroup);
 
-    document.getElementById("calendar").innerHTML = "<h6 class='text-center w-100 mt-5'>Загрузка семестра...</h6>";
+    document.getElementById("calendar").innerHTML =
+        "<h6 class='text-center w-100 mt-5'>Загрузка семестра...</h6>";
 
     let scheduleLoaded = false;
     try {
@@ -154,6 +150,8 @@ async function fetchSemesterData() {
     fetchFriends();
     updateScheduleStatus();
     refreshNotifications();
+    // >>> планируем нативные уведомления на 30 дней
+    if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
     renderSyncFreshness();
     syncSemesterData(group, subgroup);
 }
@@ -163,8 +161,6 @@ async function syncSemesterData(group, subgroup) {
         let newData = applyTimeFix(await apiSyncSchedule(group, subgroup));
 
         if (!Array.isArray(newData) || newData.length === 0) {
-            // Бэкенд ответил пустым — значит расписание ещё «свежее»,
-            // СевГУ не дёргали. Просто перерисуем индикатор.
             if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
             return;
         }
@@ -175,7 +171,6 @@ async function syncSemesterData(group, subgroup) {
             return;
         }
 
-        // Это была реальная синхронизация — фиксируем время.
         if (typeof saveSyncTime === 'function') {
             saveSyncTime(group, subgroup);
         }
@@ -186,18 +181,18 @@ async function syncSemesterData(group, subgroup) {
             try { renderCharts(); } catch (e) { console.error(e); }
             updateScheduleStatus();
             refreshNotifications();
+            // >>> расписание реально изменилось — пересобираем уведомления
+            if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
             showUpdateNotification("Ваше расписание обновлено в фоне");
         }
 
         if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
 
-        // Друзья в фоне
         if (typeof syncFriendsSchedules === 'function') {
             syncFriendsSchedules(false).catch(e => console.error('[sync] friends sync failed', e));
         }
 
     } catch (e) {
-        // 429 в фоновой синхронизации не критичен.
         const status = _extractHttpStatus(e);
         if (status === 429) {
             console.warn("[sync] rate-limited, попробуем позже");
