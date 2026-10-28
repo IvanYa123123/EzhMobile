@@ -1,22 +1,6 @@
 /* ============================================================
    fixes.css — патч поверх style.css
    v3.15.4
-   ------------------------------------------------------------
-   Изменения относительно v3.6.8:
-     • #underCalendarWidgetsZone переведена в column-раскладку.
-     • Убраны правила body.widget-dragging #widgetMiniCalCard.
-     • Исправлена опечатка //* → /* в секции 20.
-     • v3.7.4: список деталей виджета-графика переработан.
-     • v3.8.1: при драге виджета карточки друзей/преподавателей
-       сворачиваются; при драге самой секции она не скрывается.
-     • v3.9.0: вертикальный режим секций друзей и преподавателей.
-     • v3.9.1: в вертикальном режиме прячем панели управления;
-       добавлен стиль .fv-common для строки общих пар.
-     • v3.15.3: удалена секция 18 (версия под логотипом);
-       добавлена секция 23 — сдвиг точки остановки стрелок
-       листания друзей ниже панели управления.
-     • v3.15.4: секция 24 — точки-индикаторы событий (фиолетовые)
-       и заметок, переключатель "Друзья/Преподаватели".
    ============================================================ */
 
 /* ============================================================
@@ -24,7 +8,7 @@
    ============================================================ */
 
 .day-header {
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.25;
 }
 .day-nav-center {
@@ -34,22 +18,22 @@
 
 .friend-day-header,
 .teacher-day-header {
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.2;
 }
 
-.schedule-item-time { font-size: 12px; }
-.schedule-item-extra span { font-size: 11px; }
-.schedule-summary { font-size: 11px; }
-.empty-state-inline { font-size: 11px; }
+.schedule-item-time { font-size: 13px; }
+.schedule-item-extra span { font-size: 12px; }
+.schedule-summary { font-size: 13px; }
+.empty-state-inline { font-size: 12px; }
 
 .task-card {
-    font-size: 10px;
-    padding: 6px 8px 4px 8px;
+    font-size: 13px;
+    padding: 8px 10px 6px 10px;
 }
 .task-card .task-text {
-    font-size: 10px;
-    line-height: 1.35;
+    font-size: 13px;
+    line-height: 1.4;
     overflow-wrap: break-word;
     word-break: normal;
 }
@@ -57,6 +41,7 @@
 /* ============================================================
    2. СЕТКА КАЛЕНДАРЯ
    ============================================================ */
+
 
 .calendar-grid {
     grid-template-columns: repeat(7, minmax(0, 1fr));
