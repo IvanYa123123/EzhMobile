@@ -158,6 +158,8 @@ function saveSettingsFromUI() {
     updateScheduleStatus();
     restartStatusTimer();
     refreshNotifications();
+    // >>> пересобираем нативные уведомления под новые параметры
+    if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
     updateNotificationsHint();
 }
 
@@ -177,6 +179,11 @@ function restartStatusTimer() {
     _statusIntervalId = setInterval(updateScheduleStatus, getStatusTickMs());
 }
 
+// ------------------------------------------------------------
+//  Включение уведомлений. Помимо runtime-разрешения POST_NOTIFICATIONS
+//  (Android 13+), на Android 12+ нужно отдельное special access
+//  «Точные будильники». Оно запрашивается через Settings-интент.
+// ------------------------------------------------------------
 async function handleNotificationsToggle(checkbox) {
     if (checkbox.checked) {
         let result = await requestNotificationPermission();
@@ -187,18 +194,40 @@ async function handleNotificationsToggle(checkbox) {
             updateNotificationsHint();
             return;
         }
+
+        // Android 12+: проверка special access
+        if (typeof window.EzhNative !== 'undefined'
+                && typeof window.EzhNative.canScheduleExactAlarms === 'function') {
+            try {
+                if (!window.EzhNative.canScheduleExactAlarms()) {
+                    setTimeout(() => {
+                        if (confirm(
+                            'Для точных напоминаний (например, «за 15 минут до пары») ' +
+                            'системе нужно разрешение на точные будильники.\n\n' +
+                            'Открыть настройки?\n\n' +
+                            'Если отказаться — напоминания всё равно придут, но ' +
+                            'могут сработать с задержкой в несколько минут.'
+                        )) {
+                            window.EzhNative.requestExactAlarmPermission();
+                        }
+                    }, 200);
+                }
+            } catch (e) {}
+        }
     }
     saveSettingsFromUI();
 }
 
-// ------------------------------------------------------------
-//  ВНИМАНИЕ: В Android WebView Notification API почти всегда
-//  возвращает permission = 'granted', даже если нативное разрешение
-//  POST_NOTIFICATIONS не выдано. Поэтому проверяем через EzhNative.
-// ------------------------------------------------------------
 function _nativeNotifPermissionGranted() {
     if (typeof window.EzhNative === 'undefined' || window.EzhNative === null) return null;
     try { return window.EzhNative.hasNotificationPermission() === true; }
+    catch (e) { return false; }
+}
+
+function _nativeExactAlarmGranted() {
+    if (typeof window.EzhNative === 'undefined' || window.EzhNative === null) return null;
+    if (typeof window.EzhNative.canScheduleExactAlarms !== 'function') return null;
+    try { return window.EzhNative.canScheduleExactAlarms() === true; }
     catch (e) { return false; }
 }
 
@@ -209,21 +238,35 @@ function updateNotificationsHint() {
     const nativeGranted = _nativeNotifPermissionGranted();
     const advanceText = formatAdvanceText(notificationAdvance, notificationUnit);
 
-    // Android-мост активен — используем его как источник истины
     if (nativeGranted !== null) {
         if (!nativeGranted && notificationsEnabled) {
             hint.style.display = 'block';
-            hint.textContent = 'Нужно разрешить уведомления в системе — приложение запросит его при следующем открытии.';
-        } else if (nativeGranted && notificationsEnabled) {
-            hint.style.display = 'block';
-            hint.textContent = `Готово. Напомним за ${advanceText} до начала события — уведомления работают, даже если приложение закрыто.`;
-        } else {
+            hint.textContent = 'Нужно разрешить уведомления в системе — ' +
+                'приложение запросит его при следующем открытии.';
+            return;
+        }
+        if (!notificationsEnabled) {
             hint.style.display = 'none';
+            return;
+        }
+
+        const exact = _nativeExactAlarmGranted();
+        if (exact === false) {
+            hint.style.display = 'block';
+            hint.textContent =
+                `Напоминания включены (за ${advanceText}). Однако системное ` +
+                'разрешение на точные будильники не выдано — Android может ' +
+                'отложить уведомление на несколько минут. Разрешение можно ' +
+                'выдать в системных настройках приложения «Будильники и напоминания».';
+        } else {
+            hint.style.display = 'block';
+            hint.textContent = `Готово. Напомним за ${advanceText} до начала ` +
+                'события — уведомления работают, даже если приложение закрыто.';
         }
         return;
     }
 
-    // Fallback на Web Notifications (десктоп/браузер)
+    // Веб-путь
     if (!('Notification' in window)) {
         hint.style.display = 'block';
         hint.textContent = 'Ваш браузер не поддерживает уведомления.';
@@ -233,13 +276,16 @@ function updateNotificationsHint() {
 
     if (perm === 'denied') {
         hint.style.display = 'block';
-        hint.textContent = 'Уведомления запрещены в настройках браузера. Разрешите их для этого сайта вручную.';
+        hint.textContent = 'Уведомления запрещены в настройках браузера. ' +
+            'Разрешите их для этого сайта вручную.';
     } else if (perm === 'default' && notificationsEnabled) {
         hint.style.display = 'block';
-        hint.textContent = 'Нужно разрешить уведомления — нажмите на переключатель ещё раз.';
+        hint.textContent = 'Нужно разрешить уведомления — ' +
+            'нажмите на переключатель ещё раз.';
     } else if (perm === 'granted' && notificationsEnabled) {
         hint.style.display = 'block';
-        hint.textContent = `Готово. Напомним за ${advanceText} до начала события, пока вкладка открыта.`;
+        hint.textContent = `Готово. Напомним за ${advanceText} до начала ` +
+            'события, пока вкладка открыта.';
     } else {
         hint.style.display = 'none';
     }
@@ -251,13 +297,18 @@ function applyTheme() {
         if (typeof clearCustomThemeInline === 'function') clearCustomThemeInline();
     }
     document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.setAttribute('data-bs-theme', theme === 'dark' ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-bs-theme',
+        theme === 'dark' ? 'dark' : 'light');
     if (theme === 'custom') {
         if (typeof applyCustomTheme === 'function') applyCustomTheme();
     }
     if (prevTheme !== theme && typeof refreshChartsTheme === 'function') refreshChartsTheme();
 }
 
+// ------------------------------------------------------------
+//  Скачивание .ics. На Android WebView не поддерживает a.download
+//  с blob URL. Используем нативный мост: fetch → text → MediaStore.
+// ------------------------------------------------------------
 async function downloadICS() {
     const group    = (document.getElementById('groupSelect').value || '').trim();
     const subgroup = document.getElementById('subgroupSelect').value || '0';
@@ -270,14 +321,16 @@ async function downloadICS() {
     showGlobalLoader('📅 Готовим .ics-файл...');
 
     try {
-        const url = `/api/schedule.ics?group=${encodeURIComponent(group)}&subgroup=${encodeURIComponent(subgroup)}`;
+        const url = `/api/schedule.ics?group=${encodeURIComponent(group)}` +
+                    `&subgroup=${encodeURIComponent(subgroup)}`;
         const resp = await fetch(url);
 
         if (!resp.ok) {
             if (resp.status === 409) {
                 let text = '';
                 try { text = await resp.text(); } catch (e) {}
-                throw new Error(text || 'Расписание ещё не загружено. Откройте группу в календаре, затем скачивайте .ics.');
+                throw new Error(text || 'Расписание ещё не загружено. ' +
+                    'Откройте группу в календаре, затем скачивайте .ics.');
             }
             if (resp.status === 429) {
                 throw new Error('Слишком часто. Подождите минуту и попробуйте снова.');
@@ -285,11 +338,9 @@ async function downloadICS() {
             throw new Error(`HTTP ${resp.status}`);
         }
 
-        const blob = await resp.blob();
-
+        // Имя файла из заголовка
         let filename = `schedule_${group.replace(/[\/\\:*?"<>|]/g, '_')}_${subgroup}.ics`;
         const cd = resp.headers.get('Content-Disposition') || '';
-
         let m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
         if (m && m[1]) {
             try { filename = decodeURIComponent(m[1]); }
@@ -299,6 +350,21 @@ async function downloadICS() {
             if (m && m[1]) filename = m[1];
         }
 
+        // Android: сохраняем нативно
+        if (typeof window.EzhNative !== 'undefined'
+                && typeof window.EzhNative.saveFileFromText === 'function') {
+            const text = await resp.text();
+            const result = window.EzhNative.saveFileFromText(
+                filename, 'text/calendar', text);
+            if (!result) {
+                throw new Error('Не удалось сохранить файл в Downloads');
+            }
+            showUpdateNotification('✅ Файл сохранён в «Загрузки»');
+            return;
+        }
+
+        // Браузер: обычный blob-download
+        const blob = await resp.blob();
         const objectUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = objectUrl;
