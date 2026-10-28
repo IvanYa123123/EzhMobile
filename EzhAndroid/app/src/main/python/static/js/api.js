@@ -1,13 +1,18 @@
 // Обёртки над fetch. Все запросы автоматически проверяют на ошибки HTTP.
+// API_BASE подставляется из index.html: пустая строка (Flask) или
+// 'http://127.0.0.1:5000' (WebViewAssetLoader на Android).
+
+const _API_BASE = (typeof window.API_BASE === 'string') ? window.API_BASE : '';
+function _api(path) { return _API_BASE + path; }
 
 async function apiGet(url) {
-    const r = await fetch(url);
+    const r = await fetch(_api(url));
     if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
     return r.json();
 }
 
 async function apiPost(url, body) {
-    const r = await fetch(url, {
+    const r = await fetch(_api(url), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
@@ -17,7 +22,7 @@ async function apiPost(url, body) {
 }
 
 async function apiPut(url, body) {
-    const r = await fetch(url, {
+    const r = await fetch(_api(url), {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
@@ -27,7 +32,7 @@ async function apiPut(url, body) {
 }
 
 async function apiDelete(url) {
-    const r = await fetch(url, { method: 'DELETE' });
+    const r = await fetch(_api(url), { method: 'DELETE' });
     if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
     return r.json();
 }
@@ -56,17 +61,6 @@ async function apiDeleteCustomSchedule(id)    { return apiDelete(`/api/custom_sc
 async function apiSearch(q)                   { return apiGet(`/api/search?q=${encodeURIComponent(q)}`); }
 async function apiSyncScheduleForce(group, sg){ return apiGet(`/api/schedule_sync?group=${encodeURIComponent(group)}&subgroup=${sg}&force=1`); }
 
-// ============================================================
-//  ЛАБЫ ПОШТУЧНО (lab_items)
-// ------------------------------------------------------------
-//  • apiLoadLabItems(group)              — { subject: [ {id, idx, title, completed}, ... ] }
-//  • apiSyncLabItems(group, items)       — создать недостающие записи
-//    (items: [{subject, count}]). Работает ТОЛЬКО в плюс:
-//    не удаляет лишние, чтобы ручное добавление не затиралось.
-//  • apiUpdateLabItem(id, {title, completed}) — обновить одну запись
-//  • apiAddLabItem(group, subject)       — добавить одну в конец списка
-//  • apiRemoveLastLabItem(group, subject)— удалить последнюю запись
-// ============================================================
 async function apiLoadLabItems(group)               { return apiGet(`/api/lab_items?group=${encodeURIComponent(group)}`); }
 async function apiSyncLabItems(group, items)        { return apiPost('/api/lab_items/sync', {group, items}); }
 async function apiUpdateLabItem(id, patch)          { return apiPut(`/api/lab_items/${id}`, patch); }
