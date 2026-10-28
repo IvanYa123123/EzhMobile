@@ -1,11 +1,11 @@
 // Уведомления о парах и событиях.
 //
-// В Android WebView используется нативный мост window.EzhNative
-// (AlarmManager + NotificationReceiver) — уведомления приходят даже
-// когда приложение свёрнуто. В обычном браузере остаётся Web Notifications.
+// Android: нативный мост EzhNative (AlarmManager + NotificationReceiver).
+// Браузер: Web Notifications.
 //
-// scheduleAllNotifications() пересобирает все запланированные уведомления
-// на 30 дней вперёд. Вызывается при загрузке расписания и при смене настроек.
+// scheduleAllNotifications() вызывается явно после загрузки расписания,
+// после ручного рефреша и при изменении настроек. refreshNotifications()
+// на Android оставлен для веб-пути — нативный планировщик он не трогает.
 
 let _notificationCheckInterval = null;
 let _notifiedMap = new Map();
@@ -20,7 +20,14 @@ function _hasNativeBridge() {
 
 function _nativeHasPermission() {
     if (!_hasNativeBridge()) return false;
-    try { return window.EzhNative.hasNotificationPermission() === true; } catch (e) { return false; }
+    try { return window.EzhNative.hasNotificationPermission() === true; }
+    catch (e) { return false; }
+}
+
+function _nativeCanExactAlarm() {
+    if (!_hasNativeBridge()) return true;
+    try { return window.EzhNative.canScheduleExactAlarms() === true; }
+    catch (e) { return false; }
 }
 
 function initNotifications() {
@@ -29,7 +36,11 @@ function initNotifications() {
     refreshNotifications();
 
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) refreshNotifications();
+        if (!document.hidden) {
+            refreshNotifications();
+            // После возврата из фона — попытка досрочного пересчёта.
+            scheduleAllNotifications();
+        }
     });
 }
 
@@ -46,81 +57,85 @@ function requestNotificationPermission() {
     return Notification.requestPermission();
 }
 
+// ============================================================
+//  НАТИВНОЕ ПЛАНИРОВАНИЕ
+// ============================================================
+
 function scheduleAllNotifications() {
     if (!notificationsEnabled) return;
-    if (_hasNativeBridge()) {
-        if (!_nativeHasPermission()) return;
-        try {
-            window.EzhNative.cancelAllNotifications();
-            const nowMs = Date.now();
-            const advanceMs = advanceToMs(notificationAdvance, notificationUnit);
-            const horizonMs = NATIVE_HORIZON_DAYS * 24 * 60 * 60 * 1000;
-            const advanceText = formatAdvanceText(notificationAdvance, notificationUnit);
+    if (!_hasNativeBridge()) return;
+    if (!_nativeHasPermission()) return;
 
-            if (Array.isArray(cachedSchedule)) {
-                cachedSchedule.forEach(pair => {
-                    const startMs = _itemStartMs(pair.date, pair.time_range);
+    try {
+        window.EzhNative.cancelAllNotifications();
+        const nowMs = Date.now();
+        const advanceMs = advanceToMs(notificationAdvance, notificationUnit);
+        const horizonMs = NATIVE_HORIZON_DAYS * 24 * 60 * 60 * 1000;
+        const advanceText = formatAdvanceText(notificationAdvance, notificationUnit);
+
+        if (Array.isArray(cachedSchedule)) {
+            cachedSchedule.forEach(pair => {
+                const startMs = _itemStartMs(pair.date, pair.time_range);
+                if (!startMs) return;
+                const notifyMs = startMs - advanceMs;
+                if (notifyMs <= nowMs) return;
+                if (notifyMs > nowMs + horizonMs) return;
+                const id = `pair-${pair.date}-${pair.n || 0}-${_slug(pair.lesson)}`;
+                let body = pair.lesson || 'Пара';
+                if (pair.location) body += ` — ${pair.location}`;
+                if (pair.teacher)  body += `\n${pair.teacher}`;
+                window.EzhNative.scheduleNotification(
+                    id, `Пара через ${advanceText}`, body, notifyMs);
+            });
+        }
+
+        if (typeof getCustomItemsForDate === 'function'
+                && typeof customScheduleItems !== 'undefined') {
+            const today = new Date();
+            for (let i = 0; i <= NATIVE_HORIZON_DAYS; i++) {
+                const d = new Date(today);
+                d.setDate(d.getDate() + i);
+                const dateStr = getLocalDateStr(d);
+                let items = [];
+                try { items = getCustomItemsForDate(dateStr) || []; }
+                catch (e) { continue; }
+                items.forEach(ev => {
+                    if (ev.is_event !== 1) return;
+                    const startMs = _itemStartMs(dateStr, ev.time_range);
                     if (!startMs) return;
                     const notifyMs = startMs - advanceMs;
                     if (notifyMs <= nowMs) return;
                     if (notifyMs > nowMs + horizonMs) return;
-                    const id = `pair-${pair.date}-${pair.n || 0}-${_slug(pair.lesson)}`;
-                    let body = pair.lesson || 'Пара';
-                    if (pair.location) body += ` — ${pair.location}`;
-                    if (pair.teacher)  body += `\n${pair.teacher}`;
+                    const id = `event-${dateStr}-${_slug(ev.lesson)}`;
+                    let body = ev.lesson || 'Событие';
+                    if (ev.location) body += ` — ${ev.location}`;
+                    if (ev.teacher)  body += `\n${ev.teacher}`;
+                    body += `\n📅 ${formatDateRu(dateStr)}, ${ev.time_range}`;
                     window.EzhNative.scheduleNotification(
-                        id, `Пара через ${advanceText}`, body, notifyMs);
+                        id, `Событие через ${advanceText}`, body, notifyMs);
                 });
             }
-
-            if (typeof getCustomItemsForDate === 'function' && typeof customScheduleItems !== 'undefined') {
-                const today = new Date();
-                for (let i = 0; i <= NATIVE_HORIZON_DAYS; i++) {
-                    const d = new Date(today);
-                    d.setDate(d.getDate() + i);
-                    const dateStr = getLocalDateStr(d);
-                    let items = [];
-                    try { items = getCustomItemsForDate(dateStr) || []; } catch (e) { continue; }
-                    items.forEach(ev => {
-                        if (ev.is_event !== 1) return;
-                        const startMs = _itemStartMs(dateStr, ev.time_range);
-                        if (!startMs) return;
-                        const notifyMs = startMs - advanceMs;
-                        if (notifyMs <= nowMs) return;
-                        if (notifyMs > nowMs + horizonMs) return;
-                        const id = `event-${dateStr}-${_slug(ev.lesson)}`;
-                        let body = ev.lesson || 'Событие';
-                        if (ev.location) body += ` — ${ev.location}`;
-                        if (ev.teacher)  body += `\n${ev.teacher}`;
-                        body += `\n📅 ${formatDateRu(dateStr)}, ${ev.time_range}`;
-                        window.EzhNative.scheduleNotification(
-                            id, `Событие через ${advanceText}`, body, notifyMs);
-                    });
-                }
-            }
-        } catch (e) {
-            console.error('[notifications] native schedule failed', e);
         }
-        return;
+    } catch (e) {
+        console.error('[notifications] native schedule failed', e);
     }
-    // Fallback: ничего не планируем заранее — refreshNotifications сама покажет.
 }
+
+// ============================================================
+//  ВЕБ-ПУТЬ (десктоп/браузер). На Android не используется.
+// ============================================================
 
 function refreshNotifications() {
     if (!notificationsEnabled) return;
-
-    if (_hasNativeBridge()) {
-        // Нативный мост: только проверяем, не сменились ли настройки.
-        // Само планирование делает scheduleAllNotifications при загрузке.
-        return;
-    }
-
+    if (_hasNativeBridge()) return;              // планируется нативно
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
 
     const nowMs = Date.now();
     const advanceMs = advanceToMs(notificationAdvance, notificationUnit);
-    const lookaheadMs = Math.max(advanceMs, NOTIFICATION_MAX_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
+    const lookaheadMs = Math.max(
+        advanceMs,
+        NOTIFICATION_MAX_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
 
     const CUTOFF = 30 * 24 * 60 * 60 * 1000;
     for (const [k, ts] of _notifiedMap) {
@@ -147,20 +162,19 @@ function refreshNotifications() {
         });
     }
 
-    if (typeof getCustomItemsForDate === 'function' && typeof customScheduleItems !== 'undefined') {
+    if (typeof getCustomItemsForDate === 'function'
+            && typeof customScheduleItems !== 'undefined') {
         const daysAhead = Math.min(
             NOTIFICATION_MAX_LOOKAHEAD_DAYS,
-            Math.ceil(lookaheadMs / (24 * 60 * 60 * 1000)) + 1
-        );
+            Math.ceil(lookaheadMs / (24 * 60 * 60 * 1000)) + 1);
         const today = new Date();
         for (let i = 0; i <= daysAhead; i++) {
             const d = new Date(today);
             d.setDate(d.getDate() + i);
             const dateStr = getLocalDateStr(d);
-
             let items = [];
-            try { items = getCustomItemsForDate(dateStr) || []; } catch (e) { continue; }
-
+            try { items = getCustomItemsForDate(dateStr) || []; }
+            catch (e) { continue; }
             items.forEach(ev => {
                 if (ev.is_event !== 1) return;
                 const startMs = _itemStartMs(dateStr, ev.time_range);
