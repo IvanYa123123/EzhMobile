@@ -1,5 +1,6 @@
 import requests
 import urllib3
+import certifi
 from datetime import datetime, timedelta
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -14,7 +15,7 @@ class SevSUPlanner:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         self.session.trust_env = False
-        self.session.verify = False
+        self.session.verify = certifi.where()
 
         try:
             from requests.adapters import HTTPAdapter
