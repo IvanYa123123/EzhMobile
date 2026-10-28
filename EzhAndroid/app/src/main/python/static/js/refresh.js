@@ -32,13 +32,10 @@ async function manualRefresh() {
 
         if (Array.isArray(fresh) && fresh.length > 0) {
             cachedSchedule = applyTimeFix(fresh);
-
-            // Синхронизация прошла успешно — обновляем таймер свежести
             if (typeof saveSyncTime === 'function') {
                 saveSyncTime(group, subgroup);
             }
         } else {
-            // Пустой ответ — берём из локального кэша
             setLoaderText('📦 Загружаем из локального кэша...');
             const fallback = await apiLoadSchedule(group, subgroup);
             cachedSchedule = applyTimeFix(fallback);
@@ -69,6 +66,8 @@ async function manualRefresh() {
         try { renderCharts(); } catch (e) { console.error('[refresh] renderCharts failed', e); }
         updateScheduleStatus();
         refreshNotifications();
+        // >>> обновляем нативные уведомления под новое расписание
+        if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
         if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
 
         const count = Array.isArray(cachedSchedule) ? cachedSchedule.length : 0;
