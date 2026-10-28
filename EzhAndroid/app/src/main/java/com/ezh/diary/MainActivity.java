@@ -14,6 +14,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -23,14 +24,13 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.webkit.WebViewAssetLoader;
 
 import com.chaquo.python.Python;
 
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "Ezh";
@@ -44,6 +44,7 @@ public class MainActivity extends AppCompatActivity {
     private View splash;
     private TextView splashStatus;
     private EzhBridge bridge;
+    private WebViewAssetLoader assetLoader;
 
     private ValueCallback<Uri[]> pendingFileCallback;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
@@ -57,7 +58,16 @@ public class MainActivity extends AppCompatActivity {
         splash = findViewById(R.id.splash);
         splashStatus = findViewById(R.id.splashStatus);
 
-        // file chooser (для загрузки фото «Своей темы»)
+        // WebViewAssetLoader: index.html и статика идут из assets.
+        // Мы добавляем два хэндлера: /assets/ (читает APK) и /static/ (читает filesDir).
+        assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/",
+                        new WebViewAssetLoader.AssetsPathHandler(this))
+                .addPathHandler("/static/",
+                        new WebViewAssetLoader.InternalStoragePathHandler(
+                                this, new File(getFilesDir(), "static")))
+                .build();
+
         fileChooserLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
@@ -84,12 +94,13 @@ public class MainActivity extends AppCompatActivity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        // ALWAYS_ALLOW нужно, чтобы https://appassets.local мог делать fetch на http://127.0.0.1
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setSupportMultipleWindows(false);
-        s.setUserAgentString(s.getUserAgentString() + " EzhAndroid/0.70");
+        s.setUserAgentString(s.getUserAgentString() + " EzhAndroid/0.7");
         webView.setBackgroundColor(Color.WHITE);
 
         bridge = new EzhBridge(this);
@@ -97,8 +108,18 @@ public class MainActivity extends AppCompatActivity {
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                // /api/ всегда идёт на 127.0.0.1:5000, не через asset loader
+                String host = request.getUrl().getHost();
+                if (host != null && (host.equals(APP_HOST_1) || host.equals(APP_HOST_2))) {
+                    return null;
+                }
+                return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
-                splash.animate().alpha(0f).setDuration(250).withEndAction(() -> {
+                splash.animate().alpha(0f).setDuration(200).withEndAction(() -> {
                     splash.setVisibility(View.GONE);
                     webView.setVisibility(View.VISIBLE);
                 }).start();
@@ -143,9 +164,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean onShowFileChooser(WebView wv, ValueCallback<Uri[]> cb,
                                              FileChooserParams params) {
-                if (pendingFileCallback != null) {
-                    pendingFileCallback.onReceiveValue(null);
-                }
+                if (pendingFileCallback != null) pendingFileCallback.onReceiveValue(null);
                 pendingFileCallback = cb;
                 try {
                     fileChooserLauncher.launch(params.createIntent());
@@ -159,14 +178,14 @@ public class MainActivity extends AppCompatActivity {
         });
 
         setupBackDispatcher();
-        startPythonServer();
-        pollServerAndLoad();
-    }
 
-    // ============================================================
-    //  Внешние ссылки: всё, что не наш localhost, уходит в систему.
-    //  mailto:, tel:, intent: — тоже туда.
-    // ============================================================
+        // 1) Сразу показываем UI из assets — не ждём Python
+        webView.setVisibility(View.INVISIBLE);
+        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+
+        // 2) Параллельно стартуем Python
+        startPythonServer();
+    }
 
     private boolean handleExternalUrl(Uri uri) {
         if (uri == null) return false;
@@ -178,10 +197,9 @@ public class MainActivity extends AppCompatActivity {
             if (host != null && (host.equals(APP_HOST_1)
                     || host.equals(APP_HOST_2)
                     || host.equals(APP_HOST_3))) {
-                return false; // остаёмся в WebView
+                return false;
             }
         }
-
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -205,9 +223,8 @@ public class MainActivity extends AppCompatActivity {
                         "window.ezhOnBackPressed ? window.ezhOnBackPressed() : false",
                         value -> {
                             if (!"true".equals(value)) {
-                                if (webView.canGoBack()) {
-                                    webView.goBack();
-                                } else {
+                                if (webView.canGoBack()) webView.goBack();
+                                else {
                                     setEnabled(false);
                                     getOnBackPressedDispatcher().onBackPressed();
                                 }
@@ -222,7 +239,6 @@ public class MainActivity extends AppCompatActivity {
         final File dataDir = getFilesDir();
         new Thread(() -> {
             try {
-                runOnUiThread(() -> splashStatus.setText("Запуск Python-сервера..."));
                 Python py = Python.getInstance();
                 py.getModule("android_server")
                   .callAttr("start_server", dataDir.getAbsolutePath());
@@ -230,37 +246,14 @@ public class MainActivity extends AppCompatActivity {
                 Log.e(TAG, "Python server failed", e);
                 StringWriter sw = new StringWriter();
                 e.printStackTrace(new PrintWriter(sw));
-                Throwable rootCause = e;
-                while (rootCause.getCause() != null) rootCause = rootCause.getCause();
-                final String rootMsg = rootCause.toString();
-                runOnUiThread(() -> splashStatus.setText("ОШИБКА PYTHON:\n" + rootMsg));
+                Throwable rc = e;
+                while (rc.getCause() != null) rc = rc.getCause();
+                final String rootMsg = rc.toString();
+                runOnUiThread(() -> {
+                    if (splashStatus != null)
+                        splashStatus.setText("ОШИБКА PYTHON:\n" + rootMsg);
+                });
             }
         }, "py-server").start();
-    }
-
-    private void pollServerAndLoad() {
-        new Thread(() -> {
-            for (int i = 0; i < 80; i++) {
-                try {
-                    Socket sock = new Socket();
-                    sock.connect(new InetSocketAddress("127.0.0.1", PORT), 200);
-                    sock.close();
-                    runOnUiThread(() -> {
-                        webView.setVisibility(View.VISIBLE);
-                        webView.loadUrl("http://127.0.0.1:" + PORT + "/");
-                    });
-                    return;
-                } catch (Exception ignored) {
-                    final int step = i;
-                    runOnUiThread(() -> {
-                        if (step > 5) splashStatus.setText("Почти готово…");
-                    });
-                    try { Thread.sleep(300); }
-                    catch (InterruptedException e) { return; }
-                }
-            }
-            runOnUiThread(() -> splashStatus
-                    .setText("Сервер не запустился за 24 секунды."));
-        }).start();
     }
 }
