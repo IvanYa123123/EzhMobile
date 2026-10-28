@@ -12,9 +12,6 @@ def start_server(data_dir: str):
 
     bundle_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Копируем бандловые файлы в data_dir при первом запуске.
-    # VERSION нужен _read_app_version() в app.py.
-    # teachers.json нужен SevSUTeacherPlanner, который ищет его в BASE_DIR.
     for fname in ("VERSION", "teachers.json"):
         src = os.path.join(bundle_dir, fname)
         dst = os.path.join(data_dir, fname)
