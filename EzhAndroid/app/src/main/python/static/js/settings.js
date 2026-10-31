@@ -1,4 +1,4 @@
-// Модальное окно настроек.
+// Модальное окно настроек + экспорт/импорт.
 
 const SETTINGS_SECTIONS_KEY = 'settingsSections_v1';
 const SETTINGS_SECTIONS_NAMES = ['display', 'widgets', 'status', 'notif'];
@@ -28,11 +28,14 @@ function openSettingsModal() {
     document.getElementById('settingsToggleFriends').checked  = showFriends;
     document.getElementById('settingsToggleStatus').checked   = showStatus;
 
-    document.getElementById('settingsToggleWidgetMiniCal').checked = showWidgetMiniCal;
-    document.getElementById('settingsToggleWidgetGlobal').checked  = showWidgetGlobal;
-    document.getElementById('settingsToggleWidgetLabs').checked    = showWidgetLabs;
-    document.getElementById('settingsToggleWidgetPacing').checked  = showWidgetPacing;
-    document.getElementById('settingsToggleWidgetNotes').checked   = showWidgetNotes;
+    document.getElementById('settingsToggleWidgetMiniCal').checked   = showWidgetMiniCal;
+    document.getElementById('settingsToggleWidgetGlobal').checked    = showWidgetGlobal;
+    document.getElementById('settingsToggleWidgetLabs').checked      = showWidgetLabs;
+    document.getElementById('settingsToggleWidgetPacing').checked    = showWidgetPacing;
+    document.getElementById('settingsToggleWidgetSuggestions').checked = showWidgetSuggestions;
+    document.getElementById('settingsToggleWidgetNotes1').checked    = showWidgetNotes1;
+    document.getElementById('settingsToggleWidgetNotes2').checked    = showWidgetNotes2;
+    document.getElementById('settingsToggleWidgetNotes3').checked    = showWidgetNotes3;
 
     document.getElementById('settingsStatusFormat').value    = statusFormat;
     document.getElementById('settingsStatusPrecision').value = statusPrecision;
@@ -107,17 +110,23 @@ function saveSettingsFromUI() {
     localStorage.setItem('showFriends',  showFriends);
     localStorage.setItem('showStatus',   showStatus);
 
-    showWidgetMiniCal = document.getElementById('settingsToggleWidgetMiniCal').checked;
-    showWidgetGlobal  = document.getElementById('settingsToggleWidgetGlobal').checked;
-    showWidgetLabs    = document.getElementById('settingsToggleWidgetLabs').checked;
-    showWidgetPacing  = document.getElementById('settingsToggleWidgetPacing').checked;
-    showWidgetNotes   = document.getElementById('settingsToggleWidgetNotes').checked;
+    showWidgetMiniCal        = document.getElementById('settingsToggleWidgetMiniCal').checked;
+    showWidgetGlobal         = document.getElementById('settingsToggleWidgetGlobal').checked;
+    showWidgetLabs           = document.getElementById('settingsToggleWidgetLabs').checked;
+    showWidgetPacing         = document.getElementById('settingsToggleWidgetPacing').checked;
+    showWidgetSuggestions    = document.getElementById('settingsToggleWidgetSuggestions').checked;
+    showWidgetNotes1         = document.getElementById('settingsToggleWidgetNotes1').checked;
+    showWidgetNotes2         = document.getElementById('settingsToggleWidgetNotes2').checked;
+    showWidgetNotes3         = document.getElementById('settingsToggleWidgetNotes3').checked;
 
     localStorage.setItem('showWidgetMiniCal', showWidgetMiniCal);
     localStorage.setItem('showWidgetGlobal',  showWidgetGlobal);
     localStorage.setItem('showWidgetLabs',    showWidgetLabs);
     localStorage.setItem('showWidgetPacing',  showWidgetPacing);
-    localStorage.setItem('showWidgetNotes',   showWidgetNotes);
+    localStorage.setItem('showWidgetSuggestions', showWidgetSuggestions);
+    localStorage.setItem('showWidgetNotes1',  showWidgetNotes1);
+    localStorage.setItem('showWidgetNotes2',  showWidgetNotes2);
+    localStorage.setItem('showWidgetNotes3',  showWidgetNotes3);
 
     applyWidgetVisibility();
 
@@ -158,7 +167,6 @@ function saveSettingsFromUI() {
     updateScheduleStatus();
     restartStatusTimer();
     refreshNotifications();
-    // >>> пересобираем нативные уведомления под новые параметры
     if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
     updateNotificationsHint();
 }
@@ -179,11 +187,6 @@ function restartStatusTimer() {
     _statusIntervalId = setInterval(updateScheduleStatus, getStatusTickMs());
 }
 
-// ------------------------------------------------------------
-//  Включение уведомлений. Помимо runtime-разрешения POST_NOTIFICATIONS
-//  (Android 13+), на Android 12+ нужно отдельное special access
-//  «Точные будильники». Оно запрашивается через Settings-интент.
-// ------------------------------------------------------------
 async function handleNotificationsToggle(checkbox) {
     if (checkbox.checked) {
         let result = await requestNotificationPermission();
@@ -194,8 +197,6 @@ async function handleNotificationsToggle(checkbox) {
             updateNotificationsHint();
             return;
         }
-
-        // Android 12+: проверка special access
         if (typeof window.EzhNative !== 'undefined'
                 && typeof window.EzhNative.canScheduleExactAlarms === 'function') {
             try {
@@ -245,10 +246,7 @@ function updateNotificationsHint() {
                 'приложение запросит его при следующем открытии.';
             return;
         }
-        if (!notificationsEnabled) {
-            hint.style.display = 'none';
-            return;
-        }
+        if (!notificationsEnabled) { hint.style.display = 'none'; return; }
 
         const exact = _nativeExactAlarmGranted();
         if (exact === false) {
@@ -266,26 +264,23 @@ function updateNotificationsHint() {
         return;
     }
 
-    // Веб-путь
     if (!('Notification' in window)) {
         hint.style.display = 'block';
         hint.textContent = 'Ваш браузер не поддерживает уведомления.';
         return;
     }
     let perm = Notification.permission;
-
     if (perm === 'denied') {
         hint.style.display = 'block';
         hint.textContent = 'Уведомления запрещены в настройках браузера. ' +
             'Разрешите их для этого сайта вручную.';
     } else if (perm === 'default' && notificationsEnabled) {
         hint.style.display = 'block';
-        hint.textContent = 'Нужно разрешить уведомления — ' +
-            'нажмите на переключатель ещё раз.';
+        hint.textContent = 'Нужно разрешить уведомления — нажмите на переключатель ещё раз.';
     } else if (perm === 'granted' && notificationsEnabled) {
         hint.style.display = 'block';
-        hint.textContent = `Готово. Напомним за ${advanceText} до начала ` +
-            'события, пока вкладка открыта.';
+        hint.textContent = `Готово. Напомним за ${advanceText} до начала события, ` +
+            'пока вкладка открыта.';
     } else {
         hint.style.display = 'none';
     }
@@ -306,94 +301,173 @@ function applyTheme() {
 }
 
 // ------------------------------------------------------------
-//  Скачивание .ics. На Android WebView не поддерживает a.download
-//  с blob URL. Используем нативный мост: fetch → text → MediaStore.
+//  Сохранение текстового файла: WebView → EzhNative, браузер → blob
 // ------------------------------------------------------------
+function _saveTextFile(filename, mime, text) {
+    if (typeof window.EzhNative !== 'undefined'
+            && typeof window.EzhNative.saveFileFromText === 'function') {
+        const ok = window.EzhNative.saveFileFromText(filename, mime, text);
+        if (!ok) throw new Error('Не удалось сохранить файл в Downloads');
+        showUpdateNotification('✅ Файл сохранён в «Загрузки»');
+        return;
+    }
+    const blob = new Blob([text], { type: mime + ';charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
+    showUpdateNotification('✅ Файл сохранён');
+}
+
 async function downloadICS() {
     const group    = (document.getElementById('groupSelect').value || '').trim();
     const subgroup = document.getElementById('subgroupSelect').value || '0';
-
-    if (!group) {
-        alert('Сначала выберите группу!');
-        return;
-    }
+    if (!group) { alert('Сначала выберите группу!'); return; }
 
     showGlobalLoader('📅 Готовим .ics-файл...');
-
     try {
         const url = `/api/schedule.ics?group=${encodeURIComponent(group)}` +
                     `&subgroup=${encodeURIComponent(subgroup)}`;
         const resp = await fetch(url);
-
         if (!resp.ok) {
             if (resp.status === 409) {
                 let text = '';
                 try { text = await resp.text(); } catch (e) {}
-                throw new Error(text || 'Расписание ещё не загружено. ' +
-                    'Откройте группу в календаре, затем скачивайте .ics.');
+                throw new Error(text || 'Расписание ещё не загружено.');
             }
-            if (resp.status === 429) {
-                throw new Error('Слишком часто. Подождите минуту и попробуйте снова.');
-            }
+            if (resp.status === 429) throw new Error('Слишком часто. Подождите минуту.');
             throw new Error(`HTTP ${resp.status}`);
         }
-
-        // Имя файла из заголовка
         let filename = `schedule_${group.replace(/[\/\\:*?"<>|]/g, '_')}_${subgroup}.ics`;
         const cd = resp.headers.get('Content-Disposition') || '';
         let m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
-        if (m && m[1]) {
-            try { filename = decodeURIComponent(m[1]); }
-            catch (e) { /* оставляем fallback */ }
-        } else {
+        if (m && m[1]) { try { filename = decodeURIComponent(m[1]); } catch (e) {} }
+        else {
             m = /filename="?([^";]+)"?/i.exec(cd);
             if (m && m[1]) filename = m[1];
         }
-
-        // Android: сохраняем нативно
-        if (typeof window.EzhNative !== 'undefined'
-                && typeof window.EzhNative.saveFileFromText === 'function') {
-            const text = await resp.text();
-            const result = window.EzhNative.saveFileFromText(
-                filename, 'text/calendar', text);
-            if (!result) {
-                throw new Error('Не удалось сохранить файл в Downloads');
-            }
-            showUpdateNotification('✅ Файл сохранён в «Загрузки»');
-            return;
-        }
-
-        // Браузер: обычный blob-download
-        const blob = await resp.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = objectUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(objectUrl);
-
-        showUpdateNotification('✅ Файл .ics скачан');
-
+        const text = await resp.text();
+        _saveTextFile(filename, 'text/calendar', text);
     } catch (e) {
         console.error('[ics] download failed', e);
-        const msg = (e && e.message) ? e.message : 'Не удалось собрать .ics';
-        showUpdateNotification(`❌ ${msg}`);
+        showUpdateNotification(`❌ ${(e && e.message) || 'Не удалось собрать .ics'}`);
+    } finally {
+        hideGlobalLoader();
+    }
+}
+
+async function downloadTasksICS() {
+    showGlobalLoader('📝 Готовим .ics с заметками...');
+    try {
+        const resp = await fetch('/api/tasks.ics');
+        if (resp.status === 409) {
+            let text = '';
+            try { text = await resp.text(); } catch (e) {}
+            throw new Error(text || 'Заметок пока нет.');
+        }
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
+        _saveTextFile('ezh_notes.ics', 'text/calendar', text);
+    } catch (e) {
+        console.error('[ics tasks] failed', e);
+        showUpdateNotification(`❌ ${(e && e.message) || 'Не удалось собрать .ics'}`);
+    } finally {
+        hideGlobalLoader();
+    }
+}
+
+// ------------------------------------------------------------
+//  Резервная копия / восстановление
+// ------------------------------------------------------------
+async function downloadBackup() {
+    showGlobalLoader('💾 Собираем резервную копию...');
+    try {
+        const resp = await fetch('/api/backup');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const text = JSON.stringify(data, null, 2);
+        const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        _saveTextFile(`ezh_backup_${ts}.json`, 'application/json', text);
+    } catch (e) {
+        console.error('[backup] download failed', e);
+        showUpdateNotification(`❌ ${(e && e.message) || 'Не удалось скачать копию'}`);
+    } finally {
+        hideGlobalLoader();
+    }
+}
+
+function pickBackupFile() {
+    const input = document.getElementById('backupFileInput');
+    if (input) { input.value = ''; input.click(); }
+}
+
+async function onBackupFilePicked(input) {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+
+    if (!confirm('Восстановление заменит текущие заметки, друзей, лабы, настройки ' +
+                 'предметов, кастомное расписание и преподавателей.\n\nПродолжить?')) {
+        return;
+    }
+
+    showGlobalLoader('📥 Читаем файл резервной копии...');
+    try {
+        const text = await file.text();
+        let payload;
+        try { payload = JSON.parse(text); }
+        catch (e) { throw new Error('Файл не является валидным JSON'); }
+
+        if (!payload || typeof payload !== 'object' || !payload.tables) {
+            throw new Error('Это не похоже на резервную копию Ежедневника');
+        }
+
+        const resp = await fetch('/api/backup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!resp.ok) {
+            let msg = '';
+            try {
+                const j = await resp.json();
+                msg = j && j.error ? j.error : '';
+            } catch (e) {}
+            throw new Error(msg || `HTTP ${resp.status}`);
+        }
+
+        showUpdateNotification('✅ Восстановлено. Перезагружаем…');
+        setTimeout(() => location.reload(), 900);
+    } catch (e) {
+        console.error('[backup] restore failed', e);
+        showUpdateNotification(`❌ ${(e && e.message) || 'Ошибка восстановления'}`);
     } finally {
         hideGlobalLoader();
     }
 }
 
 function applyWidgetVisibility() {
-    const wm = document.getElementById('widgetMiniCalCard');
-    const wg = document.getElementById('widgetGlobalCard');
-    const wl = document.getElementById('widgetLabsCard');
-    const wp = document.getElementById('widgetPacingCard');
-    const wn = document.getElementById('widgetNotesCard');
-    if (wm) wm.style.display = showWidgetMiniCal ? '' : 'none';
-    if (wg) wg.style.display = showWidgetGlobal  ? '' : 'none';
-    if (wl) wl.style.display = showWidgetLabs    ? '' : 'none';
-    if (wp) wp.style.display = showWidgetPacing  ? '' : 'none';
-    if (wn) wn.style.display = showWidgetNotes   ? '' : 'none';
+    const map = [
+        ['widgetMiniCalCard',            showWidgetMiniCal],
+        ['widgetGlobalCard',             showWidgetGlobal],
+        ['widgetLabsCard',               showWidgetLabs],
+        ['widgetPacingCard',             showWidgetPacing],
+        ['widgetSuggestionsCard',        showWidgetSuggestions],
+        ['widgetNotesCard1',             showWidgetNotes1],
+        ['widgetNotesCard2',             showWidgetNotes2],
+        ['widgetNotesCard3',             showWidgetNotes3],
+        ['widgetLabsProCard',            showWidgetLabsPro],
+        ['widgetMoodleAvgGradeCard',     showWidgetMoodleAvg],
+        ['widgetMoodleSubjectGradesCard',showWidgetMoodleSubj],
+    ];
+    map.forEach(([id, visible]) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = visible ? '' : 'none';
+    });
+    if (typeof renderSuggestions === 'function' && showWidgetSuggestions) {
+        try { renderSuggestions(false); } catch (e) {}
+    }
 }
