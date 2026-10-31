@@ -1,0 +1,25 @@
+// settings.gradle — корень проекта EzhMobile.
+// Модуль лежит не в стандартном ./app, а в ./EzhAndroid/app — поэтому
+// projectDir переопределяется явно. Все пути (gradlew, scripts/, README)
+// считаются от корня репозитория.
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'EzhMobile'
+
+include ':app'
+project(':app').projectDir = file('EzhAndroid/app')
