@@ -1,54 +1,171 @@
+// Модуль приложения «Ежедневник СевГУ».
+//
+// Ключевые моменты:
+//   • namespace/applicationId = com.ezh.diary — совпадает с package в Java-коде
+//     и с android:name=".EzhApplication" в AndroidManifest.xml.
+//   • minSdk 26 — потому что иконка лаунчера есть ТОЛЬКО в mipmap-anydpi-v26
+//     (adaptive-icon). На API 24–25 ресурс @mipmap/ic_launcher не разрешится.
+//   • targetSdk 34 — осознанно. Начиная с targetSdk 35 Android 15 принудительно
+//     включает edge-to-edge, а MainActivity не умеет WindowInsets: WebView
+//     и сплэш уехали бы под статус-бар, а adjustResize перестал бы работать.
+//     compileSdk при этом свежий (36) — можно пользоваться новыми API.
+//   • abiFilters — обязательное требование Chaquopy: интерпретатор Python
+//     это нативная библиотека. Python 3.11 ещё поддерживает 32-битные ABI,
+//     но для APK разумнее оставить только 64-бит: каждый ABI добавляет
+//     ~10–20 МБ.
+//   • vendor-ассеты (bootstrap/chart/inter) проверяются до сборки:
+//     без них index.html получает 404 и renderCalendar() не вызывается.
+
 plugins {
     id 'com.android.application'
     id 'com.chaquo.python'
 }
 
+// versionName синхронизирован с python/VERSION (его читает app.py).
+def ezhVersionName = '0.8'
+def versionFile = file('src/main/python/VERSION')
+if (versionFile.exists()) {
+    def raw = versionFile.text.trim()
+    if (raw) ezhVersionName = raw
+}
+
 android {
     namespace 'com.ezh.diary'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
-        applicationId "com.ezh.diary"
-        minSdk 24
+        applicationId 'com.ezh.diary'
+        minSdk 26
         targetSdk 34
-        versionCode 7
-        versionName "0.7"
+        versionCode 8
+        versionName ezhVersionName
 
         ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            // Только 64-бит: arm64 для телефонов, x86_64 для эмулятора.
+            // Чтобы вернуть 32-бит, добавьте 'armeabi-v7a' и 'x86'
+            // (последний требует Python <= 3.11).
+            abiFilters 'arm64-v8a', 'x86_64'
         }
     }
 
     buildTypes {
+        debug {
+            versionNameSuffix '-debug'
+        }
         release {
             minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    lint {
+        // assembleDebug/Release lint не запускают, но `./gradlew build` — да.
+        // Не валим сборку на косметике (например, на отсутствии PNG-иконок
+        // для API 24–25, которые отсечены minSdk 26).
+        abortOnError false
+        checkReleaseBuilds false
+    }
 }
 
-dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
-    implementation 'androidx.webkit:webkit:1.8.0'
-}
+// ============================================================
+//  CHAQUOPY
+// ============================================================
 
 chaquopy {
     defaultConfig {
-        version = "3.11"
+        // Python 3.11: под него в репозитории Chaquopy есть готовые wheel'ы
+        // для lxml (единственная зависимость с нативным кодом).
+        // Минорная версия интерпретатора на машине сборки должна совпадать —
+        // иначе pip не запустится (см. buildPython ниже).
+        version = '3.11'
+
+        // Если Python 3.11 не в PATH — раскомментируйте и поправьте путь.
+        // Windows:   buildPython 'C:/Python311/python.exe'
+        // Windows:   buildPython 'py', '-3.11'
+        // macOS/Linux: buildPython '/usr/bin/python3.11'
+
         pip {
-            install "flask"
-            install "waitress"
-            install "requests"
-            install "urllib3"
-            install "beautifulsoup4"
-            install "lxml"
-            install "certifi"
-            install "flask-limiter"
+            // Состав 1:1 с src/main/python/requirements.txt.
+            // Ставятся явно, а не через install '-r', чтобы не зависеть
+            // от того, относительно какой директории Gradle ищет файл.
+            install 'flask>=3.0'
+            install 'waitress>=3.0'
+            install 'requests>=2.31'
+            install 'urllib3>=2.0'
+            install 'beautifulsoup4>=4.12'
+            install 'lxml>=5.0'
+            install 'certifi>=2024.0'
+            install 'flask-limiter>=3.5'
         }
     }
+
+    sourceSets {
+        // Значение по умолчанию и так равно src/main/python; фиксируем явно,
+        // чтобы каталог Python-кода нельзя было случайно «увести» правкой
+        // android.sourceSets.
+        getByName('main') {
+            srcDir 'src/main/python'
+        }
+    }
+}
+
+// ============================================================
+//  ГЕЙТ ПЕРЕД СБОРКОЙ: vendor-ассеты обязаны существовать
+// ------------------------------------------------------------
+//  Chaquopy упаковывает src/main/python целиком как ассеты. Если
+//  static/vendor/bootstrap.min.css отсутствует, Flask отдаёт 404,
+//  window.bootstrap === undefined, первый же new bootstrap.Modal()
+//  бросает ReferenceError, и календарь остаётся пустым. Дешевле
+//  упасть на сборке, чем ловить белый экран на устройстве.
+// ============================================================
+
+def vendorAssets = [
+    'src/main/python/static/vendor/bootstrap.min.css',
+    'src/main/python/static/vendor/bootstrap.bundle.min.js',
+    'src/main/python/static/vendor/chart.umd.min.js',
+    'src/main/python/static/fonts/inter-variable.woff2',
+]
+
+tasks.register('checkVendorAssets') {
+    group = 'verification'
+    description = 'Проверяет наличие vendor-ассетов до сборки APK.'
+    doLast {
+        def missing = vendorAssets.findAll { !file(it).exists() }
+        if (!missing.isEmpty()) {
+            throw new GradleException(
+                'Отсутствуют vendor-ассеты:\n  ' + missing.join('\n  ') +
+                '\n\nВыполните из корня репозитория:\n' +
+                '  python scripts/fetch_vendor_assets.py\n' +
+                'и повторите сборку.'
+            )
+        }
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn 'checkVendorAssets'
+}
+
+// ============================================================
+//  ЗАВИСИМОСТИ
+// ============================================================
+
+dependencies {
+    // Theme.MaterialComponents.DayNight.NoActionBar из values/themes.xml
+    implementation 'com.google.android.material:material:1.12.0'
+
+    // AppCompatActivity, AppCompatDelegate
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+
+    // NotificationCompat, NotificationManagerCompat, ActivityCompat
+    implementation 'androidx.core:core:1.13.1'
+
+    // OnBackPressedCallback, registerForActivityResult, ActivityResultContracts
+    implementation 'androidx.activity:activity:1.9.3'
 }
