@@ -1,6 +1,7 @@
 import os, sys, json, time, gzip, re, sqlite3, secrets, threading, hashlib
-from datetime import datetime, timezone
-from flask import Flask, send_from_directory, request, jsonify, g, Response
+from datetime import datetime, timezone, timedelta
+from flask import Flask, send_from_directory, request, jsonify, g
+from flask import Response
 
 try:
     from flask_limiter import Limiter
@@ -31,13 +32,12 @@ SYNC_TIMES_FILE = os.path.join(BASE_DIR, ".sync_times.json")
 GROUPS_FILE = os.path.join(BUNDLE_DIR, "Group.txt")
 STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 
-# Как часто разрешаем реальный запрос в СевГУ при /api/schedule_sync без force=1
 MIN_SYNC_INTERVAL = 6 * 3600
 
-APP_VERSION = "0.7"
+APP_VERSION = "0.8"
 try:
     with open(os.path.join(BASE_DIR, "VERSION"), "r", encoding="utf-8") as f:
-        APP_VERSION = f.read().strip() or "0.7"
+        APP_VERSION = f.read().strip() or "0.8"
 except OSError:
     pass
 
@@ -53,7 +53,9 @@ planner = SevSUPlanner()
 teacher_planner = SevSUTeacherPlanner(BASE_DIR)
 os.makedirs(SCHEDULES_DIR, exist_ok=True)
 
-limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["300 per minute"], storage_uri="memory://", strategy="fixed-window")
+limiter = Limiter(key_func=get_remote_address, app=app,
+                  default_limits=["300 per minute"],
+                  storage_uri="memory://", strategy="fixed-window")
 
 @app.after_request
 def _headers(response):
@@ -114,7 +116,8 @@ def _ensure_db():
                 init_db()
                 _db_ready = True
 
-_FORBIDDEN = str.maketrans({'/': '_', '\\': '_', ':': '_', '*': '_', '?': '_', '"': '_', '<': '_', '>': '_', '|': '_'})
+_FORBIDDEN = str.maketrans({'/': '_', '\\': '_', ':': '_', '*': '_', '?': '_',
+                            '"': '_', '<': '_', '>': '_', '|': '_'})
 def make_safe_filename(name):
     return str(name).translate(_FORBIDDEN).replace('..', '__').strip('. ')[:120]
 
@@ -184,7 +187,7 @@ def _mark_synced(key):
         cache.write(data)
 
 # ============================================================
-#  ВАЛИДАЦИЯ ГРУПП
+#  ВАЛИДАЦИЯ
 # ============================================================
 
 _VALID_SUBGROUPS = frozenset(("0", "1", "2"))
@@ -250,14 +253,13 @@ def get_groups():
         _safe_print(f"[groups] Ошибка чтения {GROUPS_FILE}: {e}")
 
     if not groups:
-        _safe_print("[groups] Group.txt пуст или не найден, качаем с сайта...")
         try:
             params = {"v": "6.2", "section": "0"}
             r = planner.session.get(planner.groups_api, params=params, timeout=10)
             if r.status_code == 200:
                 data = r.json()
                 if isinstance(data, list):
-                    if len(data) > 0 and isinstance(data[0], dict):
+                    if data and isinstance(data[0], dict):
                         groups = [item.get('name') or item.get('title') or str(item) for item in data]
                     else:
                         groups = data
@@ -312,18 +314,17 @@ def manage_tasks():
             return jsonify({"error": "text too long"}), 400
         if status not in ('green', 'orange', 'red', 'completed'):
             status = 'green'
-        cursor = conn.execute(
-            "INSERT INTO tasks (date, text, status) VALUES (?, ?, ?)",
-            (date, text, status))
+        cursor = conn.execute("INSERT INTO tasks (date, text, status) VALUES (?, ?, ?)",
+                              (date, text, status))
         conn.commit()
         return jsonify({"id": cursor.lastrowid})
     start, end = request.args.get('start'), request.args.get('end')
     if not start or not end:
         return jsonify([])
-    cursor = conn.execute(
-        "SELECT id, date, text, status FROM tasks WHERE date BETWEEN ? AND ?",
-        (start, end))
-    return jsonify([{"id": r["id"], "date": r["date"], "text": r["text"], "status": r["status"]} for r in cursor.fetchall()])
+    cursor = conn.execute("SELECT id, date, text, status FROM tasks WHERE date BETWEEN ? AND ?",
+                          (start, end))
+    return jsonify([{"id": r["id"], "date": r["date"], "text": r["text"], "status": r["status"]}
+                    for r in cursor.fetchall()])
 
 @app.route("/api/tasks/<int:task_id>", methods=["PUT", "DELETE"])
 @limiter.limit("300 per minute")
@@ -338,9 +339,8 @@ def update_task(task_id):
             return jsonify({"error": "required"}), 400
         if len(text) > 2000:
             return jsonify({"error": "text too long"}), 400
-        conn.execute(
-            "UPDATE tasks SET date=?, status=?, text=? WHERE id=?",
-            (date, status, text, task_id))
+        conn.execute("UPDATE tasks SET date=?, status=?, text=? WHERE id=?",
+                     (date, status, text, task_id))
         conn.commit()
         return jsonify({"success": True})
     conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
@@ -350,7 +350,199 @@ def update_task(task_id):
 @app.route("/api/task_dates")
 @limiter.limit("120 per minute")
 def task_dates():
-    return jsonify([r["date"] for r in get_db().execute("SELECT DISTINCT date FROM tasks ORDER BY date").fetchall()])
+    return jsonify([r["date"] for r in get_db().execute(
+        "SELECT DISTINCT date FROM tasks ORDER BY date").fetchall()])
+
+# ============================================================
+#  ЭКСПОРТ ЗАМЕТОК В .ICS
+# ============================================================
+
+_ICS_TASK_STATUS = {
+    'green': 'Обычная', 'orange': 'Важная',
+    'red': 'Срочная', 'completed': 'Выполнено',
+}
+
+def _ics_escape(s):
+    if s is None:
+        return ''
+    return (str(s).replace('\\', '\\\\').replace(';', '\\;')
+            .replace(',', '\\,').replace('\r', '').replace('\n', '\\n'))
+
+def _fold_ics_line(line: str, limit: int = 75) -> str:
+    if not line:
+        return line
+    if len(line.encode('utf-8')) <= limit:
+        return line
+    parts, current, cur_limit = [], bytearray(), limit
+    for ch in line:
+        cb = ch.encode('utf-8')
+        if len(current) + len(cb) > cur_limit:
+            parts.append(current.decode('utf-8'))
+            current = bytearray(b' ')
+            cur_limit = limit - 1
+        current += cb
+    if current:
+        parts.append(current.decode('utf-8'))
+    return '\r\n'.join(parts)
+
+def _generate_tasks_ics(tasks):
+    lines = [
+        "BEGIN:VCALENDAR", "VERSION:2.0",
+        "PRODID:-//Ezh Dnevnik//Tasks//RU",
+        "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+        "X-WR-CALNAME:Заметки EZHednevnik",
+    ]
+    dtstamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    for t in tasks:
+        date = str(t.get('date') or '')
+        text = str(t.get('text') or '').strip()
+        if not date or not text:
+            continue
+        try:
+            day = datetime.strptime(date, '%Y-%m-%d')
+        except ValueError:
+            continue
+        status = str(t.get('status') or 'green')
+        uid = hashlib.md5(f"task|{date}|{text}".encode('utf-8')).hexdigest()[:16]
+        lines.append("BEGIN:VEVENT")
+        lines.append(f"UID:{uid}@ezh-dnevnik")
+        lines.append(f"DTSTAMP:{dtstamp}")
+        lines.append(f"DTSTART;VALUE=DATE:{day.strftime('%Y%m%d')}")
+        lines.append(f"DTEND;VALUE=DATE:{(day + timedelta(days=1)).strftime('%Y%m%d')}")
+        lines.append(f"SUMMARY:{_ics_escape(text)}")
+        lines.append(f"CATEGORIES:{_ics_escape(_ICS_TASK_STATUS.get(status, status))}")
+        lines.append(f"X-EZHEDNEVNIK-STATUS:{_ics_escape(status)}")
+        lines.append("STATUS:COMPLETED" if status == 'completed' else "STATUS:NEEDS-ACTION")
+        lines.append("TRANSP:TRANSPARENT")
+        if status == 'completed':
+            lines.append("PERCENT-COMPLETE:100")
+        lines.append("END:VEVENT")
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(_fold_ics_line(l) for l in lines) + "\r\n"
+
+@app.route("/api/tasks.ics")
+@limiter.limit("30 per minute")
+def export_tasks_ics():
+    rows = get_db().execute(
+        "SELECT date, text, status FROM tasks ORDER BY date, id").fetchall()
+    tasks = [{"date": r["date"], "text": r["text"], "status": r["status"]} for r in rows]
+    if not tasks:
+        return Response("Заметок пока нет — сначала добавьте хотя бы одну.",
+                        status=409, mimetype='text/plain; charset=utf-8')
+    body = _generate_tasks_ics(tasks)
+    return Response(
+        body,
+        content_type='text/calendar; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename="ezh_notes.ics"',
+                 'Cache-Control': 'no-store'},
+    )
+
+# ============================================================
+#  РЕЗЕРВНАЯ КОПИЯ / ВОССТАНОВЛЕНИЕ
+# ============================================================
+
+_BACKUP_APP_ID = "EZHednevnik"
+
+_BACKUP_TABLES = {
+    'tasks': ('id', 'date', 'text', 'status'),
+    'friends': ('id', 'name', 'group_name', 'subgroup', 'category'),
+    'lab_progress': ('group_name', 'subject', 'completed', 'total'),
+    'lab_items': ('id', 'group_name', 'subject', 'idx', 'title', 'completed'),
+    'subject_settings': ('subject', 'custom_name', 'link', 'teacher', 'location'),
+    'custom_schedule': ('id', 'group_name', 'base_date', 'time_range', 'lesson',
+                        'type_name', 'teacher', 'location', 'is_event', 'recurrence', 'exceptions'),
+    'tracked_teachers': ('id', 'name', 'slug'),
+}
+
+_BACKUP_INT_COLS = frozenset(('id', 'idx', 'completed', 'total', 'is_event'))
+_BACKUP_MAX_ROWS = 20000
+_BACKUP_MAX_TEXT = 4000
+
+def _coerce_backup_value(column, value):
+    if column in _BACKUP_INT_COLS:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+    if value is None:
+        return ''
+    return str(value)[:_BACKUP_MAX_TEXT]
+
+@app.route("/api/backup", methods=["GET", "POST"])
+@limiter.limit("15 per minute")
+def backup():
+    conn = get_db()
+    if request.method == "POST":
+        return _restore_backup(conn)
+
+    tables = {}
+    for table, columns in _BACKUP_TABLES.items():
+        cursor = conn.execute(f"SELECT {', '.join(columns)} FROM {table}")
+        tables[table] = [dict(row) for row in cursor.fetchall()]
+
+    return jsonify({
+        "app": _BACKUP_APP_ID,
+        "version": APP_VERSION,
+        "format": 1,
+        "exported_at": int(time.time()),
+        "custom_groups": load_custom_groups(),
+        "tables": tables,
+    })
+
+def _restore_backup(conn):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "error": "invalid json"}), 400
+
+    tables = data.get('tables') if isinstance(data.get('tables'), dict) else data
+    if not isinstance(tables, dict):
+        return jsonify({"success": False, "error": "no tables in backup"}), 400
+
+    restored = {}
+    try:
+        for table, columns in _BACKUP_TABLES.items():
+            rows = tables.get(table)
+            if rows is None:
+                continue
+            if not isinstance(rows, list):
+                return jsonify({"success": False, "error": f"{table}: expected list"}), 400
+
+            conn.execute(f"DELETE FROM {table}")
+            placeholders = ', '.join('?' * len(columns))
+            sql = (f"INSERT OR REPLACE INTO {table} "
+                   f"({', '.join(columns)}) VALUES ({placeholders})")
+
+            inserted = 0
+            for row in rows[:_BACKUP_MAX_ROWS]:
+                if not isinstance(row, dict):
+                    continue
+                values = [_coerce_backup_value(c, row.get(c)) for c in columns]
+                conn.execute(sql, values)
+                inserted += 1
+            restored[table] = inserted
+
+        groups = data.get('custom_groups')
+        if isinstance(groups, list):
+            cleaned = []
+            for name in groups[:500]:
+                try:
+                    cleaned.append(validate_group(str(name)))
+                except ValueError:
+                    continue
+            save_custom_groups(cleaned)
+            restored['custom_groups'] = len(cleaned)
+
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        _safe_print(f"[backup] restore failed: {e}", flush=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+    _safe_print(f"[backup] restore ok: {restored}", flush=True)
+    return jsonify({"success": True, "restored": restored})
 
 # ============================================================
 #  LABS
@@ -380,12 +572,14 @@ def manage_labs():
         return jsonify({})
     return jsonify({
         r["subject"]: {"completed": r["completed"], "total": r["total"]}
-        for r in conn.execute("SELECT subject, completed, total FROM lab_progress WHERE group_name=?", (group,)).fetchall()
+        for r in conn.execute("SELECT subject, completed, total FROM lab_progress WHERE group_name=?",
+                              (group,)).fetchall()
     })
 
 def _recalc_lab_progress(conn, group, subject):
     row = conn.execute(
-        "SELECT COUNT(*) AS total, COALESCE(SUM(completed), 0) AS done FROM lab_items WHERE group_name=? AND subject=?",
+        "SELECT COUNT(*) AS total, COALESCE(SUM(completed), 0) AS done "
+        "FROM lab_items WHERE group_name=? AND subject=?",
         (group, subject)).fetchone()
     total, done = row["total"] or 0, row["done"] or 0
     if total == 0:
@@ -403,15 +597,11 @@ def get_lab_items():
         return jsonify({})
     grouped = {}
     for r in get_db().execute(
-            "SELECT id, subject, idx, title, completed FROM lab_items WHERE group_name=? ORDER BY subject, idx",
-            (group,)).fetchall():
-        if r["subject"] not in grouped:
-            grouped[r["subject"]] = []
-        grouped[r["subject"]].append({
-            "id": r["id"],
-            "idx": r["idx"],
-            "title": r["title"],
-            "completed": int(r["completed"])
+            "SELECT id, subject, idx, title, completed FROM lab_items "
+            "WHERE group_name=? ORDER BY subject, idx", (group,)).fetchall():
+        grouped.setdefault(r["subject"], []).append({
+            "id": r["id"], "idx": r["idx"],
+            "title": r["title"], "completed": int(r["completed"]),
         })
     return jsonify(grouped)
 
@@ -436,7 +626,8 @@ def sync_lab_items():
         for i in range(1, count + 1):
             if i not in existing:
                 conn.execute(
-                    "INSERT OR IGNORE INTO lab_items (group_name, subject, idx, title, completed) VALUES (?, ?, ?, ?, 0)",
+                    "INSERT OR IGNORE INTO lab_items (group_name, subject, idx, title, completed) "
+                    "VALUES (?, ?, ?, ?, 0)",
                     (group, subject, i, f"{short}{i}"))
     for subj in touched:
         _recalc_lab_progress(conn, group, subj)
@@ -483,21 +674,22 @@ def remove_last_lab_item():
 def update_lab_item(item_id):
     conn = get_db()
     if request.method == "DELETE":
-        row = conn.execute("SELECT group_name, subject FROM lab_items WHERE id=?", (item_id,)).fetchone()
+        row = conn.execute("SELECT group_name, subject FROM lab_items WHERE id=?",
+                           (item_id,)).fetchone()
         if row:
             conn.execute("DELETE FROM lab_items WHERE id=?", (item_id,))
             _recalc_lab_progress(conn, row["group_name"], row["subject"])
             conn.commit()
         return jsonify({"success": True})
     data = request.get_json(silent=True) or {}
-    row = conn.execute(
-        "SELECT group_name, subject, title, completed FROM lab_items WHERE id=?",
-        (item_id,)).fetchone()
+    row = conn.execute("SELECT group_name, subject, title, completed FROM lab_items WHERE id=?",
+                       (item_id,)).fetchone()
     if not row:
         return jsonify({"error": "not found"}), 404
     new_title = str(data.get('title', row["title"])).strip()[:200] or row["title"]
     new_comp = 1 if int(data.get('completed', row["completed"])) else 0
-    conn.execute("UPDATE lab_items SET title=?, completed=? WHERE id=?", (new_title, new_comp, item_id))
+    conn.execute("UPDATE lab_items SET title=?, completed=? WHERE id=?",
+                 (new_title, new_comp, item_id))
     _recalc_lab_progress(conn, row["group_name"], row["subject"])
     conn.commit()
     return jsonify({"success": True, "title": new_title, "completed": new_comp})
@@ -507,7 +699,7 @@ def update_lab_item(item_id):
 # ============================================================
 
 @app.route("/api/schedule_all")
-@limiter.limit("60 per minute")
+@limiter.limit("240 per minute")
 def get_schedule_all():
     raw_group = request.args.get('group')
     try:
@@ -516,7 +708,8 @@ def get_schedule_all():
         return jsonify([])
     subgroup = validate_subgroup(request.args.get('subgroup', '0'))
     try:
-        cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{subgroup}.json")
+        cache_file = os.path.join(SCHEDULES_DIR,
+                                  f"{make_safe_filename(group)}_{subgroup}.json")
         if os.path.exists(cache_file):
             with open(cache_file, 'r', encoding='utf-8') as f:
                 return jsonify(json.load(f))
@@ -527,7 +720,7 @@ def get_schedule_all():
         return jsonify([])
 
 @app.route("/api/schedule_sync")
-@limiter.limit("10 per minute")
+@limiter.limit("120 per minute")
 def sync_schedule():
     raw_group = request.args.get('group')
     try:
@@ -538,27 +731,25 @@ def sync_schedule():
 
     force = request.args.get('force') == '1'
     sync_key = f"{group}_{subgroup}"
-
     if not force and not _needs_sync(sync_key):
         return jsonify([])
 
     try:
         schedule = planner.get_semester_schedule(group, subgroup)
-        cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{subgroup}.json")
-
+        cache_file = os.path.join(SCHEDULES_DIR,
+                                  f"{make_safe_filename(group)}_{subgroup}.json")
         if schedule:
             if os.path.exists(cache_file):
                 try:
                     with open(cache_file, 'r', encoding='utf-8') as f:
-                        old_schedule = json.load(f)
-                    if len(schedule) < len(old_schedule) * 0.9:
+                        old = json.load(f)
+                    if len(schedule) < len(old) * 0.9:
                         _safe_print(
-                            f"[sync] защита: получено {len(schedule)} пар, в кэше {len(old_schedule)} — оставляю кэш",
+                            f"[sync] защита: получено {len(schedule)}, в кэше {len(old)} — оставляю кэш",
                             flush=True)
-                        return jsonify(old_schedule)
+                        return jsonify(old)
                 except (json.JSONDecodeError, OSError):
                     pass
-
             try:
                 tmp = cache_file + '.tmp'
                 with open(tmp, 'w', encoding='utf-8') as f:
@@ -566,12 +757,10 @@ def sync_schedule():
                 os.replace(tmp, cache_file)
             except OSError:
                 pass
-
             _mark_synced(sync_key)
         else:
             if not os.path.exists(cache_file):
                 _mark_synced(sync_key)
-
         return jsonify(schedule)
     except Exception as e:
         _safe_print(f"Error syncing schedule: {e}", flush=True)
@@ -586,7 +775,8 @@ def export_ics():
     except ValueError:
         return jsonify({"error": "invalid group"}), 400
     subgroup = validate_subgroup(request.args.get('subgroup', '0'))
-    cache_file = os.path.join(SCHEDULES_DIR, f"{make_safe_filename(group)}_{subgroup}.json")
+    cache_file = os.path.join(SCHEDULES_DIR,
+                              f"{make_safe_filename(group)}_{subgroup}.json")
     if not os.path.exists(cache_file):
         return Response(
             "Расписание ещё не загружено. Откройте группу в календаре, затем скачивайте .ics.",
@@ -595,49 +785,44 @@ def export_ics():
         with open(cache_file, 'r', encoding='utf-8') as f:
             schedule = json.load(f)
     except (OSError, json.JSONDecodeError):
-        return Response("Ошибка чтения кэша", status=500, mimetype='text/plain; charset=utf-8')
+        return Response("Ошибка чтения кэша", status=500,
+                        mimetype='text/plain; charset=utf-8')
 
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//EzhMobile//EzhDiary//RU",
-        "CALSCALE:GREGORIAN",
-        "METHOD:PUBLISH",
-    ]
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0",
+             "PRODID:-//EzhMobile//EzhDiary//RU", "CALSCALE:GREGORIAN",
+             "METHOD:PUBLISH"]
+    dtstamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     for item in schedule:
         date_str = item.get('date', '')
-        time_range = item.get('time_range', '')
+        tr = item.get('time_range', '')
         lesson = item.get('lesson', '')
         type_name = item.get('type_name', '')
         teacher = item.get('teacher', '')
         location = item.get('location', '')
-        if not date_str or ' - ' not in time_range:
+        if not date_str or ' - ' not in tr:
             continue
         try:
-            start_time, end_time = [t.strip() for t in time_range.split(' - ')]
+            start_time, end_time = [t.strip() for t in tr.split(' - ')]
             dt_start = datetime.strptime(f"{date_str} {start_time}", "%Y-%m-%d %H:%M")
             dt_end = datetime.strptime(f"{date_str} {end_time}", "%Y-%m-%d %H:%M")
         except ValueError:
             continue
         uid = hashlib.md5(f"{group}_{date_str}_{item.get('n','')}_{lesson}".encode()).hexdigest()[:16]
-        summary = lesson
-        if type_name:
-            summary += f" ({type_name})"
+        summary = lesson + (f" ({type_name})" if type_name else "")
         desc_parts = []
         if teacher:
             desc_parts.append(f"Преподаватель: {teacher}")
         if location:
             desc_parts.append(f"Аудитория: {location}")
-        desc = "\\n".join(desc_parts)
         lines.extend([
             "BEGIN:VEVENT",
             f"UID:{uid}@ezh.local",
-            f"DTSTAMP:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
+            f"DTSTAMP:{dtstamp}",
             f"DTSTART:{dt_start.strftime('%Y%m%dT%H%M%S')}",
             f"DTEND:{dt_end.strftime('%Y%m%dT%H%M%S')}",
-            f"SUMMARY:{summary}",
-            f"DESCRIPTION:{desc}",
-            f"LOCATION:{location}",
+            f"SUMMARY:{_ics_escape(summary)}",
+            f"DESCRIPTION:{_ics_escape(chr(92) + 'n'.join(desc_parts))}",
+            f"LOCATION:{_ics_escape(location)}",
             "END:VEVENT",
         ])
     lines.append("END:VCALENDAR")
@@ -645,8 +830,8 @@ def export_ics():
     from urllib.parse import quote
     filename = f"schedule_{group}_{subgroup}.ics"
     return Response(
-        "\r\n".join(lines),
-        mimetype='text/calendar; charset=utf-8',
+        "\r\n".join(_fold_ics_line(l) for l in lines) + "\r\n",
+        content_type='text/calendar; charset=utf-8',
         headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"}
     )
 
@@ -668,9 +853,9 @@ def search():
         "SELECT id, date, text, status FROM tasks WHERE text LIKE ? ORDER BY date DESC LIMIT 50",
         (like,)).fetchall()]
     events = [dict(r) for r in conn.execute(
-        "SELECT id, base_date, time_range, lesson, type_name, teacher, location, is_event, recurrence "
-        "FROM custom_schedule WHERE lesson LIKE ? ORDER BY base_date DESC LIMIT 50",
-        (like,)).fetchall()]
+        "SELECT id, base_date, time_range, lesson, type_name, teacher, location, "
+        "is_event, recurrence FROM custom_schedule WHERE lesson LIKE ? "
+        "ORDER BY base_date DESC LIMIT 50", (like,)).fetchall()]
     return jsonify({"tasks": tasks, "events": events, "count": len(tasks) + len(events)})
 
 # ============================================================
@@ -687,7 +872,6 @@ def manage_friends():
         group_raw = (data.get('group') or '').strip()
         subgroup = str(data.get('subgroup', '0'))
         category = (data.get('category') or '').strip()
-
         if not name or not group_raw:
             return jsonify({"error": "name and group required"}), 400
         if len(name) > 100 or len(category) > 100:
@@ -696,7 +880,6 @@ def manage_friends():
             group = validate_group(group_raw)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
-
         cursor = conn.execute(
             "INSERT INTO friends (name, group_name, subgroup, category) VALUES (?, ?, ?, ?)",
             (name, group, subgroup, category))
@@ -704,7 +887,7 @@ def manage_friends():
         return jsonify({"id": cursor.lastrowid})
     return jsonify([{
         "id": r["id"], "name": r["name"], "group": r["group_name"],
-        "subgroup": r["subgroup"], "category": r["category"] or ""
+        "subgroup": r["subgroup"], "category": r["category"] or "",
     } for r in conn.execute("SELECT * FROM friends").fetchall()])
 
 @app.route("/api/friends/<int:friend_id>", methods=["PUT", "DELETE"])
@@ -748,10 +931,12 @@ def manage_subjects():
         if len(subject) > 200:
             return jsonify({"error": "subject too long"}), 400
         link = (data.get('link', '') or '').strip()
-        if link and not (link.startswith('http://') or link.startswith('https://') or link.startswith('mailto:')):
+        if link and not (link.startswith('http://') or link.startswith('https://')
+                         or link.startswith('mailto:')):
             link = ''
         conn.execute(
-            "INSERT OR REPLACE INTO subject_settings (subject, custom_name, link, teacher, location) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO subject_settings (subject, custom_name, link, teacher, location) "
+            "VALUES (?, ?, ?, ?, ?)",
             (subject, data.get('custom_name', '') or '', link,
              data.get('teacher', '') or '', data.get('location', '') or ''))
         conn.commit()
@@ -759,7 +944,7 @@ def manage_subjects():
     resp = jsonify({
         r["subject"]: {
             "custom_name": r["custom_name"], "link": r["link"],
-            "teacher": r["teacher"], "location": r["location"]
+            "teacher": r["teacher"], "location": r["location"],
         } for r in conn.execute("SELECT * FROM subject_settings").fetchall()
     })
     resp.headers['Cache-Control'] = 'private, max-age=300'
@@ -786,7 +971,8 @@ def manage_custom_schedule():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         cursor = conn.execute(
-            "INSERT INTO custom_schedule (group_name, base_date, time_range, lesson, type_name, teacher, location, is_event, recurrence, exceptions) "
+            "INSERT INTO custom_schedule (group_name, base_date, time_range, lesson, "
+            "type_name, teacher, location, is_event, recurrence, exceptions) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (group, data.get('base_date', ''), data.get('time_range', ''),
              lesson, data.get('type_name', ''), data.get('teacher', ''),
@@ -800,9 +986,10 @@ def manage_custom_schedule():
     return jsonify([{
         "id": r["id"], "base_date": r["base_date"], "time_range": r["time_range"],
         "lesson": r["lesson"], "type_name": r["type_name"], "teacher": r["teacher"],
-        "location": r["location"], "is_event": r["is_event"], "recurrence": r["recurrence"],
-        "exceptions": r["exceptions"] or "[]"
-    } for r in conn.execute("SELECT * FROM custom_schedule WHERE group_name=?", (group,)).fetchall()])
+        "location": r["location"], "is_event": r["is_event"],
+        "recurrence": r["recurrence"], "exceptions": r["exceptions"] or "[]",
+    } for r in conn.execute("SELECT * FROM custom_schedule WHERE group_name=?",
+                            (group,)).fetchall()])
 
 @app.route("/api/custom_schedule/<int:item_id>", methods=["PUT", "DELETE"])
 @limiter.limit("120 per minute")
@@ -816,7 +1003,9 @@ def update_custom_schedule(item_id):
         if len(lesson) > 200:
             return jsonify({"error": "lesson too long"}), 400
         conn.execute(
-            "UPDATE custom_schedule SET base_date=?, time_range=?, lesson=?, type_name=?, teacher=?, location=?, is_event=?, recurrence=?, exceptions=? WHERE id=?",
+            "UPDATE custom_schedule SET base_date=?, time_range=?, lesson=?, "
+            "type_name=?, teacher=?, location=?, is_event=?, recurrence=?, exceptions=? "
+            "WHERE id=?",
             (data.get('base_date', ''), data.get('time_range', ''), lesson,
              data.get('type_name', ''), data.get('teacher', ''),
              data.get('location', ''), int(data.get('is_event', 0)),
@@ -849,7 +1038,8 @@ def get_teacher_schedule():
     if not slug:
         return jsonify([])
     try:
-        return jsonify(teacher_planner.get_teacher_schedule(slug, force=request.args.get('force') == '1'))
+        return jsonify(teacher_planner.get_teacher_schedule(
+            slug, force=request.args.get('force') == '1'))
     except Exception:
         return jsonify([])
 
@@ -865,14 +1055,17 @@ def manage_tracked_teachers():
             return jsonify({"error": "invalid data"}), 400
         if len(name) > 200 or len(slug) > 100:
             return jsonify({"error": "field too long"}), 400
-        cursor = conn.execute("INSERT OR IGNORE INTO tracked_teachers (name, slug) VALUES (?, ?)", (name, slug))
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO tracked_teachers (name, slug) VALUES (?, ?)",
+            (name, slug))
         conn.commit()
         if cursor.lastrowid:
             return jsonify({"id": cursor.lastrowid, "name": name, "slug": slug})
         row = conn.execute("SELECT id FROM tracked_teachers WHERE slug=?", (slug,)).fetchone()
         return jsonify({"id": row["id"], "name": name, "slug": slug, "already": True})
     return jsonify([{"id": r["id"], "name": r["name"], "slug": r["slug"]}
-                    for r in conn.execute("SELECT id, name, slug FROM tracked_teachers ORDER BY id").fetchall()])
+                    for r in conn.execute(
+                        "SELECT id, name, slug FROM tracked_teachers ORDER BY id").fetchall()])
 
 @app.route("/api/tracked_teachers/<int:item_id>", methods=["DELETE"])
 @limiter.limit("120 per minute")
