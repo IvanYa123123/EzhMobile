@@ -1,18 +1,12 @@
-// Модалка выбора группы. Открывается:
-//   • автоматически на первом запуске (нет savedGroup);
-//   • по клику на #groupDisplay (десктоп);
-//   • по клику на карандаш в компактной шапке (мобилка);
-//   • из #settingsModal (задел на будущее).
-//
-// После сохранения ставит группу в скрытые #groupSelect / #subgroupSelect,
-// обновляет #groupDisplay и #compactGroupName, вызывает fetchSemesterData().
+// Модалка выбора группы.
 
 let _groupSelectModalInstance = null;
 
 function openGroupSelectModal(forced = false) {
+    console.log("[group-select] Пытаемся открыть модалку выбора группы...");
     const modalEl = document.getElementById('groupSelectModal');
-    if (!modalEl) { console.warn('[group-select] modal #groupSelectModal not found'); return; }
-    if (typeof bootstrap === 'undefined') { console.warn('[group-select] bootstrap not loaded'); return; }
+    if (!modalEl) { console.warn('[group-select] ОШИБКА: #groupSelectModal не найдена в HTML!'); return; }
+    if (typeof bootstrap === 'undefined') { console.warn('[group-select] ОШИБКА: bootstrap не загружен!'); return; }
 
     const input = document.getElementById('gsGroupInput');
     const select = document.getElementById('gsSubgroupSelect');
@@ -23,7 +17,6 @@ function openGroupSelectModal(forced = false) {
     if (title) title.textContent = forced ? 'Выберите группу' : 'Сменить группу';
     if (cancelBtn) cancelBtn.style.display = forced ? 'none' : '';
 
-    // Предзаполняем из localStorage (если есть)
     const savedGroup = localStorage.getItem('savedGroup') || '';
     const savedSub = localStorage.getItem('savedSubgroup') || '0';
     if (input) input.value = savedGroup;
@@ -34,7 +27,6 @@ function openGroupSelectModal(forced = false) {
         hint.className = 'small text-muted mb-2';
     }
 
-    // Фокус на input — только один раз навешиваем обработчик shown.bs.modal
     if (!modalEl.dataset.focusHooked) {
         modalEl.addEventListener('shown.bs.modal', () => {
             const inp = document.getElementById('gsGroupInput');
@@ -45,6 +37,7 @@ function openGroupSelectModal(forced = false) {
 
     _groupSelectModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
     _groupSelectModalInstance.show();
+    console.log("[group-select] Модалка открыта.");
 }
 
 async function saveGroupFromModal() {
@@ -62,23 +55,17 @@ async function saveGroupFromModal() {
         return;
     }
 
-    // Пишем в скрытые поля — их читает fetchSemesterData()
     document.getElementById('groupSelect').value = group;
     document.getElementById('subgroupSelect').value = subgroup;
 
     if (_groupSelectModalInstance) _groupSelectModalInstance.hide();
 
-    // Обновляем #groupDisplay сразу (читает из DOM)
     updateGroupDisplay();
 
-    // Основная загрузка (внутри — проверка справочника, "добавить?", сохранение
-    // в localStorage, загрузка расписания)
     if (typeof fetchSemesterData === 'function') {
         await fetchSemesterData();
     }
 
-    // Если fetchSemesterData НЕ сохранил группу (юзер отменил «добавить в справочник»),
-    // откатываем поля к тому, что в localStorage
     const savedGroup = localStorage.getItem('savedGroup') || '';
     if (savedGroup !== group) {
         document.getElementById('groupSelect').value = savedGroup;
@@ -86,12 +73,9 @@ async function saveGroupFromModal() {
         updateGroupDisplay();
     }
 
-    // Обновляем видимость шапки (мобилка): есть группа → compact, нет → onboarding
     if (typeof checkOnboarding === 'function') checkOnboarding();
 }
 
-// Читает группу из #groupSelect / #subgroupSelect (DOM), а не из localStorage.
-// Так updateGroupDisplay корректно работает ДО того, как fetchSemesterData запишет savedGroup.
 function updateGroupDisplay() {
     const gsInput = document.getElementById('groupSelect');
     const ssInput = document.getElementById('subgroupSelect');
