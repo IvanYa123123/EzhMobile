@@ -9,8 +9,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (typeof initNotesWidget === 'function') initNotesWidget();
 
         await ensureGroupsLoaded();
-        initGroupAutocomplete(document.getElementById('groupSelect'));
+
+        // Автокомплит для видимых полей ввода групп
         initGroupAutocomplete(document.getElementById('friendGroup'));
+
+        // Автокомплит для поля в модалке выбора группы (новый элемент #gsGroupInput).
+        // Инициализируем ровно один раз — функция создаёт body-level dropdown,
+        // повторный вызов наплодит дубликаты.
+        if (!window._gsAutocompleteInit) {
+            const gsInput = document.getElementById('gsGroupInput');
+            if (gsInput && typeof initGroupAutocomplete === 'function') {
+                initGroupAutocomplete(gsInput);
+                window._gsAutocompleteInit = true;
+            }
+        }
 
         await refreshTaskDates();
 
@@ -19,13 +31,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateScheduleStatus();
         restartStatusTimer();
 
-        if (localStorage.getItem('savedGroup')) {
-            document.getElementById('groupSelect').value = localStorage.getItem('savedGroup');
-            if (localStorage.getItem('savedSubgroup')) {
-                document.getElementById('subgroupSelect').value = localStorage.getItem('savedSubgroup');
-            }
+        const savedGroup = localStorage.getItem('savedGroup');
+
+        if (savedGroup) {
+            // Обычный запуск: группа уже выбрана
+            document.getElementById('groupSelect').value = savedGroup;
+            const savedSub = localStorage.getItem('savedSubgroup');
+            if (savedSub) document.getElementById('subgroupSelect').value = savedSub;
+
+            if (typeof updateGroupDisplay === 'function') updateGroupDisplay();
             await fetchSemesterData();
+            if (typeof checkOnboarding === 'function') checkOnboarding();
         } else {
+            // Первый запуск: пустой календарь + модалка выбора группы
             updateWeekDropdown();
             renderCalendar();
             renderCharts();
@@ -33,6 +51,15 @@ document.addEventListener("DOMContentLoaded", async () => {
             renderSyncFreshness();
             hideGlobalLoader();
             fetchFriends();
+
+            if (typeof updateGroupDisplay === 'function') updateGroupDisplay();
+            if (typeof checkOnboarding === 'function') checkOnboarding();
+
+            // Авто-открываем модалку, чтобы пользователь сразу выбрал группу.
+            // Небольшая задержка — даём странице отрисоваться, модалке анимироваться.
+            setTimeout(() => {
+                if (typeof openGroupSelectModal === 'function') openGroupSelectModal(true);
+            }, 400);
         }
     } catch (e) {
         console.error(e);
@@ -150,7 +177,6 @@ async function fetchSemesterData() {
     fetchFriends();
     updateScheduleStatus();
     refreshNotifications();
-    // >>> планируем нативные уведомления на 30 дней
     if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
     renderSyncFreshness();
     syncSemesterData(group, subgroup);
@@ -181,7 +207,6 @@ async function syncSemesterData(group, subgroup) {
             try { renderCharts(); } catch (e) { console.error(e); }
             updateScheduleStatus();
             refreshNotifications();
-            // >>> расписание реально изменилось — пересобираем уведомления
             if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
             showUpdateNotification("Ваше расписание обновлено в фоне");
         }
