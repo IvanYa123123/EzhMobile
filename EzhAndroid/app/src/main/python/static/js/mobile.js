@@ -38,13 +38,16 @@
             window.expandedDayDateStr = dateStr;
             switchTab('day');
         } else {
-            // На десктопе разворачиваем день на всю ширину
             if (typeof toggleExpandDay === 'function' && window.expandedDayDateStr !== dateStr) {
                 toggleExpandDay(dateStr);
             }
         }
     };
 
+    // ФИКС: раньше использовался style.display, но на #onboardingHeader висит
+    // Bootstrap-класс .d-none с display:none!important — inline-стиль его
+    // не перебивает, из-за чего шапка с выбором группы НЕ появлялась на мобилке.
+    // Теперь управляем ТОЛЬКО классом .d-none.
     window.checkOnboarding = function() {
         if (!isMobile()) return;
         var savedGroup = localStorage.getItem('savedGroup');
@@ -53,21 +56,22 @@
         var compactGroup = document.getElementById('compactGroupName');
 
         if (savedGroup) {
-            if (bigHeader) bigHeader.style.display = 'none';
+            if (bigHeader) bigHeader.classList.add('d-none');
             if (compactHeader) {
                 compactHeader.classList.remove('d-none');
-                compactGroup.textContent = savedGroup;
+                if (compactGroup) compactGroup.textContent = savedGroup;
             }
         } else {
-            if (bigHeader) bigHeader.style.display = 'block';
+            if (bigHeader) bigHeader.classList.remove('d-none');
             if (compactHeader) compactHeader.classList.add('d-none');
         }
     };
 
+    // ФИКС: теперь вызывается модалка выбора группы, а не показ десктопной шапки
     window.showGroupChange = function() {
-        document.getElementById('onboardingHeader').style.display = 'block';
-        document.getElementById('compactHeader').classList.add('d-none');
-        switchTab('schedule');
+        if (typeof openGroupSelectModal === 'function') {
+            openGroupSelectModal(false);
+        }
     };
 
     window.ezhOnBackPressed = function() {
@@ -85,7 +89,7 @@
             return true;
         }
         const bigHeader = document.getElementById('onboardingHeader');
-        if (bigHeader && bigHeader.style.display === 'none') {
+        if (bigHeader && bigHeader.classList.contains('d-none')) {
             showGroupChange();
             return true;
         }
