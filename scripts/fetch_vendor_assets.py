@@ -26,14 +26,22 @@ def main():
     os.makedirs(VENDOR, exist_ok=True)
     os.makedirs(FONTS, exist_ok=True)
     for url, dst in FILES:
-        if os.path.exists(dst):
-            print(f"skip {dst}")
+        # Если файл существует и весит больше 1 КБ — пропускаем
+        if os.path.exists(dst) and os.path.getsize(dst) > 1024:
+            print(f"skip {dst} (already exists)")
             continue
+            
         print(f"download {url}")
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req) as r, open(dst, "wb") as f:
-            f.write(r.read())
-        print(f"  -> {dst}")
+        try:
+            with urllib.request.urlopen(req) as r, open(dst, "wb") as f:
+                f.write(r.read())
+            print(f"  -> {dst} ({os.path.getsize(dst)} bytes)")
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            if os.path.exists(dst):
+                os.remove(dst)
+            raise SystemExit(1)
     print("done")
 
 if __name__ == "__main__":
