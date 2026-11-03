@@ -21,6 +21,7 @@
     <link href="/static/css/mobile.css" rel="stylesheet">
     <link href="/static/css/animations.css" rel="stylesheet">
     <link href="/static/css/teachers.css" rel="stylesheet">
+    <link href="/static/css/group-select.css" rel="stylesheet">
     <script src="/static/vendor/chart.umd.min.js"></script>
 </head>
 <body data-mobile-tab="schedule">
@@ -85,7 +86,7 @@
             </div>
             <div class="col-md-2">
                 <span id="groupDisplay" class="group-display group-display-empty"
-                      title="Изменить можно в настройках" onclick="openSettingsModal()">Группа не выбрана</span>
+                      title="Выбрать группу" onclick="openGroupSelectModal(false)">Группа не выбрана</span>
                 <input type="hidden" id="groupSelect" value="">
                 <select id="subgroupSelect" style="display:none;">
                     <option value="0">Все подгруппы</option>
@@ -554,6 +555,41 @@
   </div>
 </div>
 
+<!-- Модалка выбора группы -->
+<div class="modal fade" id="groupSelectModal" tabindex="-1" aria-labelledby="gsModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header py-3 border-bottom-0">
+        <h5 class="modal-title fw-bold mb-0" id="gsModalTitle">Выберите группу</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-bold" for="gsGroupInput">Группа</label>
+          <input type="text" id="gsGroupInput" class="form-control"
+                 placeholder="Начните вводить номер группы…"
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold" for="gsSubgroupSelect">Подгруппа</label>
+          <select id="gsSubgroupSelect" class="form-select">
+            <option value="0">Все подгруппы</option>
+            <option value="1">1 подгруппа</option>
+            <option value="2">2 подгруппа</option>
+          </select>
+        </div>
+        <div id="gsHint" class="small text-muted mb-2">
+          Начните вводить номер группы — например, ИВТ/б-24-1-о.
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="gsCancelBtn">Отмена</button>
+        <button type="button" class="btn btn-primary fw-bold" onclick="saveGroupFromModal()">Продолжить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Нижнее меню -->
 <nav class="mobile-bottom-nav d-lg-none" id="mobileBottomNav">
     <button type="button" class="mobile-nav-item active" data-tab="schedule" onclick="switchMobileTab('schedule')"><span class="nav-icon">📅</span><span>Расписание</span></button>
@@ -592,6 +628,7 @@
 <script src="/static/js/custom-theme.js"></script>
 <script src="/static/js/mobile.js"></script>
 <script src="/static/js/moodle-pro.js"></script>
+<script src="/static/js/group-select.js"></script>
 <script src="/static/js/main.js"></script>
 </body>
 </html>
