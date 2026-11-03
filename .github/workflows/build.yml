@@ -25,7 +25,7 @@ jobs:
           python-version: '3.11'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4   # ← было @v3, стало @v4
+        uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
 
@@ -36,6 +36,17 @@ jobs:
 
       - name: Fetch vendor assets
         run: python scripts/fetch_vendor_assets.py
+
+      - name: Verify vendor assets (MUST EXIST)
+        run: |
+          echo "Проверка скачанных файлов..."
+          ls -la EzhAndroid/app/src/main/python/static/vendor/
+          ls -la EzhAndroid/app/src/main/python/static/fonts/
+          if [ ! -f "EzhAndroid/app/src/main/python/static/vendor/bootstrap.bundle.min.js" ]; then
+            echo "ОШИБКА: bootstrap.bundle.min.js не найден!"
+            exit 1
+          fi
+          echo "Все файлы на месте."
 
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
