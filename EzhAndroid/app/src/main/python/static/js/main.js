@@ -10,12 +10,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         await ensureGroupsLoaded();
 
-        // Автокомплит для видимых полей ввода групп
         initGroupAutocomplete(document.getElementById('friendGroup'));
 
-        // Автокомплит для поля в модалке выбора группы (новый элемент #gsGroupInput).
-        // Инициализируем ровно один раз — функция создаёт body-level dropdown,
-        // повторный вызов наплодит дубликаты.
         if (!window._gsAutocompleteInit) {
             const gsInput = document.getElementById('gsGroupInput');
             if (gsInput && typeof initGroupAutocomplete === 'function') {
@@ -34,7 +30,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         const savedGroup = localStorage.getItem('savedGroup');
 
         if (savedGroup) {
-            // Обычный запуск: группа уже выбрана
             document.getElementById('groupSelect').value = savedGroup;
             const savedSub = localStorage.getItem('savedSubgroup');
             if (savedSub) document.getElementById('subgroupSelect').value = savedSub;
@@ -43,7 +38,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             await fetchSemesterData();
             if (typeof checkOnboarding === 'function') checkOnboarding();
         } else {
-            // Первый запуск: пустой календарь + модалка выбора группы
+            // Первый запуск: пустой календарь
             updateWeekDropdown();
             renderCalendar();
             renderCharts();
@@ -55,11 +50,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (typeof updateGroupDisplay === 'function') updateGroupDisplay();
             if (typeof checkOnboarding === 'function') checkOnboarding();
 
-            // Авто-открываем модалку, чтобы пользователь сразу выбрал группу.
-            // Небольшая задержка — даём странице отрисоваться, модалке анимироваться.
-            setTimeout(() => {
-                if (typeof openGroupSelectModal === 'function') openGroupSelectModal(true);
-            }, 400);
+            // Мгновенно открываем модалку выбора группы
+            if (typeof openGroupSelectModal === 'function') {
+                openGroupSelectModal(true);
+            } else {
+                console.error("Ошибка: openGroupSelectModal не найдена! Проверьте group-select.js");
+            }
         }
     } catch (e) {
         console.error(e);
@@ -101,15 +97,9 @@ function _extractHttpStatus(err) {
 
 function _errorText(err) {
     const status = _extractHttpStatus(err);
-    if (status === 429) {
-        return 'Слишком много запросов. Подожди минуту и обнови страницу.';
-    }
-    if (status === 401) {
-        return 'Требуется авторизация.';
-    }
-    if (status >= 500) {
-        return 'Ошибка на сервере. Загляни в окно консоли приложения.';
-    }
+    if (status === 429) return 'Слишком много запросов. Подожди минуту и обнови страницу.';
+    if (status === 401) return 'Требуется авторизация.';
+    if (status >= 500) return 'Ошибка на сервере. Загляни в окно консоли приложения.';
     return 'Не удалось загрузить расписание.';
 }
 
@@ -197,9 +187,7 @@ async function syncSemesterData(group, subgroup) {
             return;
         }
 
-        if (typeof saveSyncTime === 'function') {
-            saveSyncTime(group, subgroup);
-        }
+        if (typeof saveSyncTime === 'function') saveSyncTime(group, subgroup);
 
         if (isScheduleDifferent(newData, cachedSchedule)) {
             cachedSchedule = newData;
