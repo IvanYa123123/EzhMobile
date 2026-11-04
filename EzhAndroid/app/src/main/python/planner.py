@@ -73,9 +73,10 @@ class SevSUPlanner:
     def get_schedule_for_week(self, group_name: str, week: int) -> list:
         params = {"v": "6.2", "section": "0", "group": group_name, "week": week}
         try:
-            # Таймаут уменьшен с 20 до 12 секунд: 25 недель × 20с = 8 минут
-            # ожидания в худшем случае. С общим бюджетом (ниже) этого хватает.
-            response = self.session.get(self.api_url, params=params, timeout=12)
+            # Таймаут на одну неделю — 8 секунд. Он же используется как
+            # «резерв» в _fetch_weeks_sequential, чтобы бюджет времени
+            # не был превышен ожиданием ответа очередной недели.
+            response = self.session.get(self.api_url, params=params, timeout=8)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("ok"):
@@ -84,21 +85,39 @@ class SevSUPlanner:
             print(f"Schedule fetch error week {week}: {e}")
         return []
 
-    def _fetch_weeks_sequential(self, group_name: str, weeks, budget_sec: float = 60.0) -> dict:
+    def _fetch_weeks_sequential(self, group_name: str, weeks, budget_sec: float = 22.0):
         """Последовательная загрузка с общим бюджетом времени.
-        Параллельные потоки в Chaquopy/Android нестабильны (коммит 10f4015),
-        но 25 запросов × 20с могут висеть до 8 минут без общего таймаута.
-        Ставим бюджет 60с: дальше — используем то, что успели получить."""
+
+        Возвращает (results: dict[int, list], exhausted: bool).
+
+        Резерв reserve=8s гарантирует, что мы не начнём запрос, который
+        заведомо вылезет за бюджет. Итого худший случай по времени —
+        budget_sec + reserve, но реально мы останавливаемся ДО того,
+        как начнём новый запрос: elapsed + reserve > budget_sec.
+
+        При budget_sec=22 это гарантирует, что суммарное время ответа
+        сервера не превысит клиентский таймаут (30с в api.js).
+        """
         results = {}
+        exhausted = False
+        reserve = 8.0
         t0 = time.monotonic()
         for w in weeks:
-            if time.monotonic() - t0 > budget_sec:
+            if time.monotonic() - t0 + reserve > budget_sec:
+                exhausted = True
                 print(f"[planner] timeout budget exhausted at week {w}", flush=True)
                 break
             results[w] = self.get_schedule_for_week(group_name, w)
-        return results
+        return results, exhausted
 
-    def get_semester_schedule(self, group_name: str, target_subgroup: str = "0", max_weeks: int = 25) -> list:
+    def get_semester_schedule(self, group_name: str, target_subgroup: str = "0", max_weeks: int = 25):
+        """Возвращает (schedule: list, exhausted: bool).
+
+        exhausted=True означает, что из-за бюджета времени мы не успели
+        опросить все недели — недостающие экстраполированы по шаблонам
+        чётной/нечётной недели. Вызывающий код должен решить, помечать
+        ли такую синхронизацию успешной.
+        """
         full_schedule = []
 
         odd_template = None
@@ -109,7 +128,7 @@ class SevSUPlanner:
         even_template_len = 0
 
         all_weeks = list(range(1, max_weeks + 1))
-        weeks_data = self._fetch_weeks_sequential(group_name, all_weeks)
+        weeks_data, exhausted = self._fetch_weeks_sequential(group_name, all_weeks)
 
         target_is_all = (target_subgroup == "0")
 
@@ -178,4 +197,4 @@ class SevSUPlanner:
                                 pass
                         full_schedule.append(extrapolated_item)
 
-        return full_schedule
+        return full_schedule, exhausted
