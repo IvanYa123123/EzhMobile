@@ -449,6 +449,20 @@ const _DRAG_HEDGEHOG_SIZE = 64;
 
 let _hedgehogSvgMarkup = '';
 
+// Inline-fallback на случай, если /static/img/hedgehog.svg недоступен
+// (файл не коммитится — раньше fetch падал с 404, drag всегда рисовал
+// голый эмодзи 🦔 и в консоли копились warning'и).
+const _HEDGEHOG_INLINE_SVG =
+    '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">'
+  + '<path fill="#6b3f1a" d="M20 55 L28 30 L36 48 L44 25 L52 45 L60 22 L68 44 L76 28 L82 52 Z"/>'
+  + '<path fill="#f5d9a8" d="M15 62 Q15 45 35 45 L75 45 Q85 45 85 62 Q85 82 50 82 Q15 82 15 62 Z"/>'
+  + '<path fill="#f5d9a8" d="M15 62 Q5 62 5 68 Q5 75 15 75 Z"/>'
+  + '<circle cx="10" cy="68" r="2" fill="#2a1505"/>'
+  + '<circle cx="28" cy="58" r="2.5" fill="#2a1505"/>'
+  + '<ellipse cx="32" cy="81" rx="4" ry="3" fill="#dcb87c"/>'
+  + '<ellipse cx="55" cy="81" rx="4" ry="3" fill="#dcb87c"/>'
+  + '</svg>';
+
 const _LEG_DURATION_SLOW = 1.20;
 const _LEG_DURATION_FAST = 0.15;
 const _LEG_SPEED_LOW  = 0.2;
@@ -490,15 +504,23 @@ function initWidgetDragAndDrop() {
 }
 
 function _preloadHedgehogSvg() {
+    // Сразу ставим inline-SVG, чтобы drag-and-drop выглядел нормально
+    // даже без файла /static/img/hedgehog.svg.
+    _hedgehogSvgMarkup = _HEDGEHOG_INLINE_SVG;
+
+    // Если файл всё-таки есть в APK — подменим на него (богаче анимации).
     fetch(_DRAG_HEDGEHOG_URL)
         .then(r => {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.text();
         })
-        .then(text => { _hedgehogSvgMarkup = text; })
-        .catch(e => {
-            console.warn('[drag] не удалось загрузить hedgehog.svg:', e);
-            _hedgehogSvgMarkup = '<div style="font-size:56px;line-height:1;">🦔</div>';
+        .then(text => {
+            if (text && text.indexOf('<svg') !== -1) {
+                _hedgehogSvgMarkup = text;
+            }
+        })
+        .catch(() => {
+            // Тихо: inline-версия уже стоит, шум в консоли не нужен.
         });
 }
 
