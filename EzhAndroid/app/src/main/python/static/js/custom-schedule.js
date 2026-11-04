@@ -108,9 +108,11 @@ function openCustomScheduleModal(dateStr, itemId = null) {
         modalTitle.textContent = 'Редактировать';
         delBtn.style.display = 'block';
 
-        let timeParts = item.time_range.split('-');
-        let tStart = timeParts[0].trim();
-        let tEnd = timeParts[1].trim();
+        // Защита от кривого time_range: сервер теперь валидирует формат,
+        // но старые записи могли сохраниться битыми. Не крашим модалку.
+        let parts = String(item.time_range || '').split('-');
+        let tStart = parts[0] ? parts[0].trim() : '';
+        let tEnd   = parts[1] ? parts[1].trim() : '';
         document.getElementById('csTimeStart').value = tStart;
         document.getElementById('csTimeEnd').value = tEnd;
 
@@ -163,7 +165,13 @@ async function saveCustomSchedule() {
     let start = document.getElementById('csTimeStart').value;
     let end = document.getElementById('csTimeEnd').value;
 
-    if (start >= end) return alert("Ошибка: Начальное время должно быть строго раньше времени окончания!");
+    if (!start || !end) return alert("Заполните время!");
+
+    // Сравнение по минутам, а не лексикографически: «8:00» < «10:00»,
+    // хотя строка '8:00' > '10:00'.
+    const [sMins, eMins] = parseTimeRangeToMins(`${start} - ${end}`);
+    if (sMins >= eMins) return alert("Ошибка: Начальное время должно быть строго раньше времени окончания!");
+
     let time_range = `${start} - ${end}`;
 
     let payload = {
@@ -179,7 +187,7 @@ async function saveCustomSchedule() {
         exceptions: '[]'
     };
 
-    if (!start || !end || !payload.lesson) return alert("Заполните время и название!");
+    if (!payload.lesson) return alert("Заполните название!");
 
     let conflict = checkScheduleConflict(payload.base_date, payload.time_range, payload.recurrence, id);
     if (conflict && !confirm(conflict.msg + "\n\nВсё равно сохранить?")) return;
@@ -241,10 +249,6 @@ async function deleteCustomSchedule() {
     await refreshCustomSchedule();
 }
 
-// v3.6.8: прямое обновление панели событий миникалендаря.
-// Раньше цепочка шла через renderCalendar → renderMiniCalendar,
-// но в некоторых сценариях (виджет свёрнут или вне видимости)
-// обновление терялось. Теперь вызываем явно.
 async function refreshCustomSchedule() {
     let group = document.getElementById('groupSelect').value.trim();
     try { customScheduleItems = await apiLoadCustomSchedule(group); }
