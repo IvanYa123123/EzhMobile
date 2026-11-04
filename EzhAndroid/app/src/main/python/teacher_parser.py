@@ -280,6 +280,7 @@ def _parse_summary(summary: str, description: str):
       "Лекция. Математика"
       "Математика, ЛЗ"
       "Математика (ЛЗ, ПИН/б-24-1-о)"
+      "Math (Lection) (Group)"      ← раньше ломалось: type="Group"
     """
     summary = (summary or '').strip()
     description = (description or '').strip()
@@ -287,13 +288,20 @@ def _parse_summary(summary: str, description: str):
     lesson = summary
     type_name = ''
 
-    # 1) Тип в скобках: "Математика (Лекция)"
-    m = re.search(r'^(.*?)\s*\(([^)]+)\)\s*$', summary)
+    # 1) Тип в скобках — только если содержимое похоже на тип занятия.
+    #    Иначе оставляем скобки частью lesson (например, «(Group)»).
+    m = re.search(r'^(.*?)\s*\(([^()]+)\)\s*$', summary)
     if m:
-        lesson = m.group(1).strip()
         inner = m.group(2).strip()
-        # Внутри скобок может быть "ЛЗ, ПИН/б-24-1-о" — берём первое
-        type_name = inner.split(',')[0].strip()
+        is_type = any(p.search(inner) for p, _ in _TYPE_PATTERNS)
+        short_type = inner.lower().strip() in (
+            'лекция', 'лз', 'пз', 'семинар', 'зачёт', 'экзамен',
+            'лек.', 'лаб.', 'практ.'
+        )
+        if is_type or short_type:
+            lesson = m.group(1).strip()
+            # Внутри скобок может быть "ЛЗ, ПИН/б-24-1-о" — берём первое
+            type_name = inner.split(',')[0].strip()
 
     # 2) Тип через запятую: "Математика, ЛЗ"
     if not type_name:
