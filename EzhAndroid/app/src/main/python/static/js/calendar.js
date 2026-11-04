@@ -61,7 +61,11 @@ async function renderCalendar() {
     else if (calDir === 'left') cal.classList.add('slide-left');
     else cal.classList.add('fade-in');
 
-    if (!currentGroup || cachedSchedule.length === 0) {
+    // Раньше условие было `cachedSchedule.length === 0`, и это прятало
+    // кастомные события, даже если они есть. Теперь пропускаем рендер
+    // только когда пусто и там, и там.
+    const hasCustom = Array.isArray(customScheduleItems) && customScheduleItems.length > 0;
+    if (!currentGroup || (cachedSchedule.length === 0 && !hasCustom)) {
         cal.innerHTML = `<div class="empty-state empty-state-wide">
             <div class="empty-state-icon">📚</div>
             <div class="empty-state-title">${currentGroup ? 'Расписание не загружено' : 'Выберите группу'}</div>
@@ -139,7 +143,9 @@ async function renderCalendar() {
     }
     cal.innerHTML = htmlParts.join('');
 
-    // Клик по колонке = развернуть день (десктоп) / открыть вкладку «День» (мобилка)
+    // Клик по колонке = развернуть день (десктоп) / открыть вкладку «День» (мобилка).
+    // openDayMode сам разбирается с повторным кликом по развёрнутому дню —
+    // см. mobile.js.
     cal.querySelectorAll('.day-col').forEach(col => {
         col.addEventListener('click', (e) => {
             if (e.target.closest('button, a, textarea, input, .schedule-item, .schedule-summary')) return;
