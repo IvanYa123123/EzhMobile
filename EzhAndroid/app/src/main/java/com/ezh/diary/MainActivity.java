@@ -41,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
     private View splash;
     private TextView splashStatus;
     private EzhBridge bridge;
-    
+
     private static boolean isPythonStarting = false;
 
     private ValueCallback<Uri[]> pendingFileCallback;
@@ -129,7 +129,20 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
-                request.grant(request.getResources());
+                // Грантим только локальному origin. Если пользователь
+                // случайно перешёл по внешней ссылке внутри WebView,
+                // камера/микрофон стороннему сайту не достанутся.
+                final Uri origin = request.getOrigin();
+                if (origin == null || origin.getHost() == null) {
+                    request.deny();
+                    return;
+                }
+                final String host = origin.getHost().toLowerCase();
+                if (host.equals("127.0.0.1") || host.equals("localhost")) {
+                    request.grant(request.getResources());
+                } else {
+                    request.deny();
+                }
             }
 
             @Override
@@ -155,8 +168,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         setupBackDispatcher();
-        
-        // Запускаем логику старта
+
         new Thread(() -> {
             if (!isServerRunning()) {
                 startPythonServer();
@@ -179,7 +191,7 @@ public class MainActivity extends AppCompatActivity {
     private void startPythonServer() {
         if (isPythonStarting) return;
         isPythonStarting = true;
-        
+
         final File dataDir = getFilesDir();
         new Thread(() -> {
             try {
@@ -189,8 +201,6 @@ public class MainActivity extends AppCompatActivity {
                   .callAttr("start_server", dataDir.getAbsolutePath());
             } catch (final Exception e) {
                 Log.e(TAG, "Python server failed", e);
-                isPythonStarting = false;
-                
                 StringWriter sw = new StringWriter();
                 e.printStackTrace(new PrintWriter(sw));
                 Throwable rc = e;
@@ -200,6 +210,15 @@ public class MainActivity extends AppCompatActivity {
                     if (splashStatus != null)
                         splashStatus.setText("ОШИБКА PYTHON:\n" + rootMsg);
                 });
+            } finally {
+                // В нормальном режиме waitress.serve() не возвращает
+                // управление — finally не выполнится, isPythonStarting
+                // останется true и защитит от повторного старта.
+                //
+                // Если сервер упал или вернулся (что для serve() — аномалия),
+                // сбрасываем флаг: следующая Activity в том же процессе
+                // сможет поднять сервер заново.
+                isPythonStarting = false;
             }
         }, "py-server").start();
     }
@@ -218,18 +237,18 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {
                 final int step = i;
                 runOnUiThread(() -> {
-                    if (step > 5 && splashStatus != null) 
+                    if (step > 5 && splashStatus != null)
                         splashStatus.setText("Почти готово…");
                 });
-                try { 
-                    Thread.sleep(300); 
-                } catch (InterruptedException e) { 
-                    return; 
+                try {
+                    Thread.sleep(300);
+                } catch (InterruptedException e) {
+                    return;
                 }
             }
         }
         runOnUiThread(() -> {
-            if (splashStatus != null) 
+            if (splashStatus != null)
                 splashStatus.setText("Сервер не запустился за 24 секунды.");
         });
     }
