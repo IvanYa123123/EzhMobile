@@ -20,13 +20,42 @@ function escapeJsString(s) {
         .replace(/\n/g, '\\n');
 }
 
+// Безопасный href: только http(s)/mailto, экранируем кавычки/угловые.
+// Возвращает '' для недопустимых схем — тогда рендерится span вместо <a>.
+function safeHref(url) {
+    if (!url) return '';
+    const s = String(url).trim();
+    if (!/^(https?:\/\/|mailto:)/i.test(s)) return '';
+    return escapeHtml(s);
+}
+
 function getLocalDateStr(d) {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+// Точечная замена устаревших времён пар. Раньше replace('13:50','14:00')
+// менял любое вхождение (например, в названии аудитории «13:50-а»).
+// Теперь заменяем только токен целиком и только в стандартном формате
+// "HH:MM" или "HH:MM - HH:MM".
+const _TIME_FIX_MAP = { '13:50': '14:00', '15:20': '15:30' };
+
+function _fixTimeToken(t) {
+    return _TIME_FIX_MAP[t] || t;
+}
+
 function fixTime(str) {
     if (!str) return '';
-    return str.replace('13:50', '14:00').replace('15:20', '15:30');
+    const s = String(str).trim();
+
+    const range = s.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
+    if (range) {
+        return `${_fixTimeToken(range[1])} - ${_fixTimeToken(range[2])}`;
+    }
+
+    const single = s.match(/^(\d{1,2}:\d{2})$/);
+    if (single) return _fixTimeToken(single[1]);
+
+    return str;
 }
 
 function applyTimeFix(scheduleArray) {
@@ -88,8 +117,8 @@ function highlightMatch(text, query) {
 function parseTimeRangeToMins(tr) {
     if (!tr) return [0, 0];
     let parts = tr.split('-');
-    let s = parts[0].trim().split(':');
-    let e = parts[1].trim().split(':');
+    let s = (parts[0] || '').trim().split(':');
+    let e = (parts[1] || '').trim().split(':');
     return [parseInt(s[0]||0)*60 + parseInt(s[1]||0), parseInt(e[0]||0)*60 + parseInt(e[1]||0)];
 }
 
