@@ -102,7 +102,11 @@ function scheduleAllNotifications() {
                 const notifyMs = startMs - advanceMs;
                 if (notifyMs <= nowMs) return;
                 if (notifyMs > nowMs + horizonMs) return;
-                const id = `pair-${pair.date}-${pair.n || 0}-${_slug(pair.lesson)}`;
+                // Подгруппа в ID: две пары с одинаковыми date/n/lesson,
+                // но разными подгруппами (subgroup=0 в фильтре) раньше
+                // давали коллизию PendingIntent → одно уведомление
+                // терялось. Добавили pair.subgroup.
+                const id = `pair-${pair.date}-${pair.n || 0}-${pair.subgroup || 0}-${_slug(pair.lesson)}`;
                 let body = pair.lesson || 'Пара';
                 if (pair.location) body += ` — ${pair.location}`;
                 if (pair.teacher)  body += `\n${pair.teacher}`;
@@ -128,7 +132,12 @@ function scheduleAllNotifications() {
                     const notifyMs = startMs - advanceMs;
                     if (notifyMs <= nowMs) return;
                     if (notifyMs > nowMs + horizonMs) return;
-                    const id = `event-${dateStr}-${_slug(ev.lesson)}`;
+                    // custom_id уникален для строки custom_schedule;
+                    // для повторяющихся событий дата всё равно разная.
+                    // Раньше ID строился только из date+slug(lesson) —
+                    // два события с одинаковым названием в один день
+                    // давали коллизию.
+                    const id = `event-${dateStr}-${ev.custom_id || _slug(ev.lesson)}`;
                     let body = ev.lesson || 'Событие';
                     if (ev.location) body += ` — ${ev.location}`;
                     if (ev.teacher)  body += `\n${ev.teacher}`;
