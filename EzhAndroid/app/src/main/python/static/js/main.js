@@ -2,17 +2,6 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
     try {
-        // ============================================================
-        // ДИАГНОСТИЧЕСКАЯ ПРОВЕРКА (временно)
-        // ============================================================
-        if (typeof bootstrap === 'undefined') {
-            alert("❌ ОШИБКА: Библиотека Bootstrap НЕ загружена! Кнопки и модалки работать не будут.");
-        } else {
-            // Если всё хорошо, можно закомментировать эту строку, чтобы не мешала
-            // alert("✅ Bootstrap успешно загружен!");
-        }
-        // ============================================================
-
         showGlobalLoader();
 
         initSettings();
@@ -64,8 +53,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             // Мгновенно открываем модалку выбора группы
             if (typeof openGroupSelectModal === 'function') {
                 openGroupSelectModal(true);
-            } else {
-                console.error("Ошибка: openGroupSelectModal не найдена! Проверьте group-select.js");
             }
         }
     } catch (e) {
