@@ -1,10 +1,6 @@
 // Заметки: создание, редактирование, цвета, drag-n-drop, undo.
 // Обновление карточки — in-place, чтобы CSS-transition плавно менял
 // border-left-color при переключении статуса.
-//
-// v3.6.1: после успешного apiUpdateTask дёргаем refreshMiniCalEvents(),
-// чтобы панель заметок/событий справа от миникалендаря (в горизонтальном
-// режиме) всегда была синхронна с данными в БД.
 
 const _taskBlurTimers = {};
 
@@ -139,6 +135,7 @@ function _buildTaskCard(task) {
 
     let spanText = document.createElement('div');
     spanText.className = 'task-text';
+    // Здесь innerHTML — экранирование обязательно.
     let safeText = task.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     spanText.innerHTML = `<span class="task-text-short">${safeText}</span><span class="task-text-full">${safeText}</span>`;
     spanText.onclick = () => { if (task.status !== 'completed') toggleColor(task.id, task.status); };
@@ -191,11 +188,12 @@ function _updateTaskCard(div, task) {
     div.classList.toggle('task-completed', task.status === 'completed');
     _applyOverdueClass(div, task);
 
-    const safeText = task.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // ВАЖНО: это textContent — повторное HTML-экранирование здесь вредно.
+    // Раньше после редактирования «a < b» превращалось в «a &lt; b».
     const shortEl = div.querySelector('.task-text-short');
     const fullEl  = div.querySelector('.task-text-full');
-    if (shortEl) shortEl.textContent = safeText;
-    if (fullEl)  fullEl.textContent  = safeText;
+    if (shortEl) shortEl.textContent = task.text;
+    if (fullEl)  fullEl.textContent  = task.text;
 
     const actions = div.querySelector('.task-actions');
     if (actions) _fillTaskActions(actions, task);
@@ -208,9 +206,6 @@ function _updateTaskCard(div, task) {
     div.ondragstart = (e) => { e.dataTransfer.setData("text/plain", JSON.stringify(task)); };
 }
 
-// v3.6.1: после успешного апдейта дёргаем refreshMiniCalEvents() —
-// панель событий справа от миникалендаря обновится (задача могла
-// стать completed, переехать на другую дату или переименоваться).
 function updateTaskRequest(task) {
     renderTask(task);
     apiUpdateTask(task.id, {date: task.date, text: task.text, status: task.status})
@@ -277,7 +272,8 @@ function toggleColor(id, currentStatus) {
     updateTaskRequest({id, date: dateId, text, status: newStatus});
 }
 
-function allowDrop(e) { e.preventDefault(); }
+// Дубль allowDrop удалён — он уже объявлен в state.js (общий для всех
+// HTML-обработчиков ondragover/ondrop).
 
 function drop(e, newDate) {
     e.preventDefault();
