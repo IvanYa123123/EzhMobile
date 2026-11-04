@@ -353,11 +353,16 @@ async function downloadICS() {
         let filename = `schedule_${group.replace(/[\/\\:*?"<>|]/g, '_')}_${subgroup}.ics`;
         const cd = resp.headers.get('Content-Disposition') || '';
         let m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
-        if (m && m[1]) { try { filename = decodeURIComponent(m[1]); } catch (e) {} }
-        else {
+        if (m && m[1]) {
+            try { filename = decodeURIComponent(m[1]); } catch (e) {}
+        } else {
             m = /filename="?([^";]+)"?/i.exec(cd);
             if (m && m[1]) filename = m[1];
         }
+        // Санитизация ПОСЛЕ декодирования: Content-Disposition может
+        // содержать «/» (группа ПИН/б-24-1-о), а MediaStore.Downloads
+        // с таким DISPLAY_NAME создаёт вложенную папку или падает.
+        filename = filename.replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').slice(0, 200);
         const text = await resp.text();
         _saveTextFile(filename, 'text/calendar', text);
     } catch (e) {
@@ -477,5 +482,23 @@ function applyWidgetVisibility() {
     });
     if (typeof renderSuggestions === 'function' && showWidgetSuggestions) {
         try { renderSuggestions(false); } catch (e) {}
+    }
+}
+
+// ------------------------------------------------------------
+//  Кнопки-крестики в index.html вызывают hideWidget(cardId, toggleId).
+//  Раньше функции не было — каждый клик падал с ReferenceError,
+//  виджет не скрывался, консоль забивалась ошибками.
+// ------------------------------------------------------------
+function hideWidget(cardId, toggleId) {
+    const card = document.getElementById(cardId);
+    if (card) card.style.display = 'none';
+
+    const toggle = document.getElementById(toggleId);
+    if (toggle) {
+        toggle.checked = false;
+        // onchange в разметке ведёт на saveSettingsFromUI() — он
+        // запишет флаг в localStorage и применит видимость.
+        toggle.dispatchEvent(new Event('change', { bubbles: true }));
     }
 }
