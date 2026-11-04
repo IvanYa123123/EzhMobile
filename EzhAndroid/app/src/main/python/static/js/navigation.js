@@ -47,11 +47,30 @@ function navigateEvent(fromDateStr, direction) {
 }
 
 // ============================================================
+//  ОБЁРТКИ ДЛЯ ПАНЕЛИ ВКЛАДКИ «ДЕНЬ»
+// ------------------------------------------------------------
+//  Кнопки в index.html вызывают navigateNoteFromHere(dir) /
+//  navigateEventFromHere(dir) — раньше этих функций не было,
+//  и все 4 кнопки падали с ReferenceError.
+// ============================================================
+
+function navigateNoteFromHere(dir) {
+    if (!window.expandedDayDateStr) return;
+    navigateNote(window.expandedDayDateStr, dir);
+    if (typeof renderDayView === 'function') renderDayView();
+}
+
+function navigateEventFromHere(dir) {
+    if (!window.expandedDayDateStr) return;
+    navigateEvent(window.expandedDayDateStr, dir);
+    if (typeof renderDayView === 'function') renderDayView();
+}
+
+// ============================================================
 //  СТРЕЛКИ ← →
 // ------------------------------------------------------------
 //  • День развёрнут (fullscreen-day) → шаг на 1 день.
 //  • Иначе                          → шаг на неделю.
-//  Вызывается из HTML вместо changeWeek.
 // ============================================================
 
 function navigatePrev() {
