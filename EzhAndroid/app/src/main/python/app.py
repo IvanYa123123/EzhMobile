@@ -48,6 +48,12 @@ def _safe_print(*args, **kwargs):
     except Exception:
         pass
 
+def _to_int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static')
 planner = SevSUPlanner()
 teacher_planner = SevSUTeacherPlanner(BASE_DIR)
@@ -202,6 +208,12 @@ def _mark_synced(key):
 
 _VALID_SUBGROUPS = frozenset(("0", "1", "2"))
 _GROUP_RE = re.compile(r'^[A-Za-zА-Яа-яЁё0-9/._\-]{1,64}$')
+# Ссылка: разрешаем только http(s) и mailto, запрещаем пробелы и символы,
+# ломающие атрибут (кавычки/угловые скобки). Даже если клиент забудет
+# escapeHtml — XSS через href не пройдёт.
+_LINK_RE = re.compile(r'^(?:https?://|mailto:)[^\s"<>]{1,2000}$', re.IGNORECASE)
+_TIME_RANGE_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d - ([01]\d|2[0-3]):[0-5]\d$')
+_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 def validate_subgroup(raw):
     s = str(raw if raw is not None else "0").strip()
@@ -217,6 +229,20 @@ def validate_group(raw):
         raise ValueError("invalid group format")
     return s
 
+def _validate_base_date(raw):
+    s = str(raw or "").strip()
+    if not _DATE_RE.match(s):
+        return None
+    try:
+        datetime.strptime(s, "%Y-%m-%d")
+        return s
+    except ValueError:
+        return None
+
+def _validate_time_range(raw):
+    s = str(raw or "").strip()
+    return s if _TIME_RANGE_RE.match(s) else None
+
 # ============================================================
 #  CUSTOM GROUPS
 # ============================================================
@@ -229,9 +255,15 @@ def load_custom_groups():
         return []
 
 def save_custom_groups(groups):
+    """Атомарная запись: tmp + os.replace. Сбой/выключение питания
+    не оставит битый JSON — старый файл останется нетронутым."""
     try:
-        with open(CUSTOM_GROUPS_FILE, 'w', encoding='utf-8') as f:
+        tmp = CUSTOM_GROUPS_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(groups, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, CUSTOM_GROUPS_FILE)
         return True
     except OSError:
         return False
@@ -541,7 +573,10 @@ def _restore_backup(conn):
                     cleaned.append(validate_group(str(name)))
                 except ValueError:
                     continue
-            save_custom_groups(cleaned)
+            # Если файл групп не записался — откатываем БД, чтобы не было
+            # рассинхрона «таблицы восстановлены, группы нет».
+            if not save_custom_groups(cleaned):
+                raise RuntimeError("custom_groups save failed")
             restored['custom_groups'] = len(cleaned)
 
         conn.commit()
@@ -774,10 +809,16 @@ def sync_schedule():
                     with open(cache_file, 'r', encoding='utf-8') as f:
                         old = json.load(f)
                     if len(schedule) < len(old) * 0.9:
-                        _safe_print(
-                            f"[sync] защита: получено {len(schedule)}, в кэше {len(old)} — оставляю кэш",
-                            flush=True)
-                        return jsonify(old)
+                        # Легитимное сокращение в конце семестра: новый
+                        # ответ покрывает более раннюю дату, чем старый.
+                        # В этом случае не блокируем обновление.
+                        old_max = max((str(x.get('date') or '') for x in old), default='')
+                        new_max = max((str(x.get('date') or '') for x in schedule), default='')
+                        if not (new_max and old_max and new_max < old_max):
+                            _safe_print(
+                                f"[sync] защита: получено {len(schedule)}, в кэше {len(old)} — оставляю кэш",
+                                flush=True)
+                            return jsonify(old)
                 except (json.JSONDecodeError, OSError):
                     pass
             try:
@@ -871,7 +912,10 @@ def export_ics():
     lines.append("END:VCALENDAR")
 
     from urllib.parse import quote
-    filename = f"schedule_{group}_{subgroup}.ics"
+    # Санитизация имени: group может содержать «/», что сломает
+    # MediaStore.Downloads на Android.
+    safe_group = make_safe_filename(group)
+    filename = f"schedule_{safe_group}_{subgroup}.ics"
     return Response(
         "\r\n".join(_fold_ics_line(l) for l in lines) + "\r\n",
         content_type='text/calendar; charset=utf-8',
@@ -913,7 +957,7 @@ def manage_friends():
         data = request.get_json(silent=True) or {}
         name = (data.get('name') or '').strip()
         group_raw = (data.get('group') or '').strip()
-        subgroup = str(data.get('subgroup', '0'))
+        subgroup = validate_subgroup(data.get('subgroup', '0'))
         category = (data.get('category') or '').strip()
         if not name or not group_raw:
             return jsonify({"error": "name and group required"}), 400
@@ -941,10 +985,12 @@ def update_or_delete_friend(friend_id):
         data = request.get_json(silent=True) or {}
         name = (data.get('name') or '').strip()
         group_raw = (data.get('group') or '').strip()
-        subgroup = str(data.get('subgroup', '0'))
+        subgroup = validate_subgroup(data.get('subgroup', '0'))
         category = (data.get('category') or '').strip()
         if not name or not group_raw:
             return jsonify({"error": "name and group required"}), 400
+        if len(name) > 100 or len(category) > 100:
+            return jsonify({"error": "field too long"}), 400
         try:
             group = validate_group(group_raw)
         except ValueError as e:
@@ -974,8 +1020,9 @@ def manage_subjects():
         if len(subject) > 200:
             return jsonify({"error": "subject too long"}), 400
         link = (data.get('link', '') or '').strip()
-        if link and not (link.startswith('http://') or link.startswith('https://')
-                         or link.startswith('mailto:')):
+        # Строгая проверка: только http(s)/mailto без кавычек и угловых
+        # скобок. Даже если клиент забудет escapeHtml — атрибут не сломается.
+        if link and not _LINK_RE.match(link):
             link = ''
         conn.execute(
             "INSERT OR REPLACE INTO subject_settings (subject, custom_name, link, teacher, location) "
@@ -1013,13 +1060,21 @@ def manage_custom_schedule():
             group = validate_group(group_raw)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+
+        base_date = _validate_base_date(data.get('base_date'))
+        if not base_date:
+            return jsonify({"error": "invalid base_date"}), 400
+        time_range = _validate_time_range(data.get('time_range'))
+        if not time_range:
+            return jsonify({"error": "invalid time_range"}), 400
+
         cursor = conn.execute(
             "INSERT INTO custom_schedule (group_name, base_date, time_range, lesson, "
             "type_name, teacher, location, is_event, recurrence, exceptions) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (group, data.get('base_date', ''), data.get('time_range', ''),
-             lesson, data.get('type_name', ''), data.get('teacher', ''),
-             data.get('location', ''), int(data.get('is_event', 0)),
+            (group, base_date, time_range, lesson,
+             data.get('type_name', ''), data.get('teacher', ''),
+             data.get('location', ''), _to_int(data.get('is_event', 0)),
              data.get('recurrence', 'none'), data.get('exceptions', '[]')))
         conn.commit()
         return jsonify({"id": cursor.lastrowid})
@@ -1045,13 +1100,21 @@ def update_custom_schedule(item_id):
             return jsonify({"error": "lesson required"}), 400
         if len(lesson) > 200:
             return jsonify({"error": "lesson too long"}), 400
+
+        base_date = _validate_base_date(data.get('base_date'))
+        if not base_date:
+            return jsonify({"error": "invalid base_date"}), 400
+        time_range = _validate_time_range(data.get('time_range'))
+        if not time_range:
+            return jsonify({"error": "invalid time_range"}), 400
+
         conn.execute(
             "UPDATE custom_schedule SET base_date=?, time_range=?, lesson=?, "
             "type_name=?, teacher=?, location=?, is_event=?, recurrence=?, exceptions=? "
             "WHERE id=?",
-            (data.get('base_date', ''), data.get('time_range', ''), lesson,
+            (base_date, time_range, lesson,
              data.get('type_name', ''), data.get('teacher', ''),
-             data.get('location', ''), int(data.get('is_event', 0)),
+             data.get('location', ''), _to_int(data.get('is_event', 0)),
              data.get('recurrence', 'none'), data.get('exceptions', '[]'), item_id))
         conn.commit()
         return jsonify({"success": True})
