@@ -80,25 +80,32 @@ let showWidgetMoodleSubj  = localStorage.getItem('showWidgetMoodleSubj')  !== 'f
 let friendsTeachersTab = localStorage.getItem('friendsTeachersTab') || 'friends';
 
 function applyFriendsTeachersVisibility() {
-    const friendsEl  = document.getElementById('friendsSection');
-    const teachersEl = document.getElementById('teachersSection');
-    const btnFriends = document.getElementById('btnTabFriends');
+    const friendsEl   = document.getElementById('friendsSection');
+    const teachersEl  = document.getElementById('teachersSection');
+    const btnFriends  = document.getElementById('btnTabFriends');
     const btnTeachers = document.getElementById('btnTabTeachers');
     if (!friendsEl || !teachersEl) return;
 
-    if (btnFriends)  btnFriends.checked  = (friendsTeachersTab === 'friends');
-    if (btnTeachers) btnTeachers.checked = (friendsTeachersTab === 'teachers');
+    const isFriends = (friendsTeachersTab === 'friends');
 
-    if (friendsTeachersTab === 'friends') {
+    if (btnFriends)  btnFriends.checked  = isFriends;
+    if (btnTeachers) btnTeachers.checked = !isFriends;
+
+    // Bootstrap btn-check стилизует label через «:checked + .btn»,
+    // поэтому .active нужен на label, а не на input. Раньше класс
+    // вешали на input — семантически неверно (хоть визуально и не
+    // влияло, т.к. стилизация шла через :checked +).
+    const labelFriends  = document.querySelector('label[for="btnTabFriends"]');
+    const labelTeachers = document.querySelector('label[for="btnTabTeachers"]');
+    if (labelFriends)  labelFriends.classList.toggle('active',  isFriends);
+    if (labelTeachers) labelTeachers.classList.toggle('active', !isFriends);
+
+    if (isFriends) {
         friendsEl.style.display = '';
         teachersEl.style.display = 'none';
-        if (btnFriends) btnFriends.classList.add('active');
-        if (btnTeachers) btnTeachers.classList.remove('active');
     } else {
         friendsEl.style.display = 'none';
         teachersEl.style.display = '';
-        if (btnFriends) btnFriends.classList.remove('active');
-        if (btnTeachers) btnTeachers.classList.add('active');
     }
 }
 
