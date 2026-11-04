@@ -18,7 +18,6 @@ function initSettings() {
     applyWidgetVisibility();
     if (typeof applyFriendsTeachersVisibility === 'function') applyFriendsTeachersVisibility();
     if (typeof initNotesWidget === 'function') initNotesWidget();
-    if (typeof restoreNotesWidgetZone === 'function') restoreNotesWidgetZone();
     if (typeof initWidgetDragAndDrop === 'function') initWidgetDragAndDrop();
 }
 
