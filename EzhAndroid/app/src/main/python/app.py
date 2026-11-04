@@ -53,6 +53,15 @@ planner = SevSUPlanner()
 teacher_planner = SevSUTeacherPlanner(BASE_DIR)
 os.makedirs(SCHEDULES_DIR, exist_ok=True)
 
+# Фоновое обновление ICS преподавателей имеет смысл только на десктопе /
+# в отладке, где Flask живёт долго. На Android процесс умирает вместе с
+# приложением — там это лишний расход.
+if not _ANDROID_DATA:
+    try:
+        teacher_planner.start_background_refresh(6)
+    except Exception:
+        pass
+
 limiter = Limiter(key_func=get_remote_address, app=app,
                   default_limits=["300 per minute"],
                   storage_uri="memory://", strategy="fixed-window")
