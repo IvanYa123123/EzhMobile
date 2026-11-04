@@ -44,7 +44,14 @@ def parse_teachers_list(html: str) -> list:
     return _parse_teachers_regex(html)
 
 def _parse_teachers_bs4(html: str) -> list:
-    soup = BeautifulSoup(html, 'lxml')
+    # Пытаемся взять быстрый lxml-парсер; если wheel'а нет —
+    # откатываемся на встроенный html.parser, чтобы не ронять
+    # весь список преподавателей в fallback-регекс.
+    try:
+        soup = BeautifulSoup(html, 'lxml')
+    except Exception:
+        soup = BeautifulSoup(html, 'html.parser')
+
     result = []
     seen = set()
 
