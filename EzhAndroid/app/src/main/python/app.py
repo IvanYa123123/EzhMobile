@@ -59,7 +59,8 @@ limiter = Limiter(key_func=get_remote_address, app=app,
 
 @app.after_request
 def _headers(response):
-    if request.path.startswith('/static/'):
+    # Кэшируем только УСПЕШНЫЕ файлы (код 200). Ошибки 404 кэшировать нельзя!
+    if response.status_code == 200 and request.path.startswith('/static/'):
         response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
     else:
         response.headers['Cache-Control'] = 'no-store'
