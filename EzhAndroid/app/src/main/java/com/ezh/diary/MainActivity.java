@@ -106,11 +106,28 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request,
                                         WebResourceError error) {
+                String url = request.getUrl() != null ? request.getUrl().toString() : "?";
+                Log.e(TAG, "WebView error: " + url + " — " + error.getDescription());
+
                 if (request.isForMainFrame()) {
-                    Log.e(TAG, "WebView main-frame error: " + error.getDescription());
                     runOnUiThread(() -> {
                         if (splashStatus != null) {
                             splashStatus.setText("Ошибка загрузки: " + error.getDescription());
+                        }
+                    });
+                    return;
+                }
+
+                // 404 на vendor-файлы — главная причина «белого экрана»
+                // по BUILD.md (bootstrap.min.css / chart.umd.min.js).
+                // Подсвечиваем в сплэше, чтобы пользователь сразу видел
+                // причину, а не смотрел на пустой календарь.
+                if (url.contains("/static/vendor/") || url.contains("bootstrap") || url.contains("chart")) {
+                    runOnUiThread(() -> {
+                        if (splashStatus != null && splashStatus.getVisibility() == View.VISIBLE) {
+                            splashStatus.setText(
+                                "Не загрузились vendor-ассеты (" + url + ").\n" +
+                                "Запустите scripts/fetch_vendor_assets.py и пересоберите APK.");
                         }
                     });
                 }
@@ -221,8 +238,7 @@ public class MainActivity extends AppCompatActivity {
                 // управление — finally не выполнится, isPythonStarting
                 // останется true и защитит от повторного старта.
                 // Если сервер упал или вернулся (что для serve() — аномалия),
-                // сбрасываем флаг под тем же локом: следующая Activity
-                // в том же процессе сможет поднять сервер заново.
+                // сбрасываем флаг под тем же локом.
                 synchronized (PY_START_LOCK) {
                     isPythonStarting = false;
                 }
