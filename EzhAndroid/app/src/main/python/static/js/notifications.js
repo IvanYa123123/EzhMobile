@@ -10,6 +10,11 @@
 let _notificationCheckInterval = null;
 let _notifiedMap = new Map();
 
+// Сигнатура последнего успешного планирования. Сравнивается в
+// visibilitychange, чтобы не перепланировать все будильники на 30 дней
+// при каждом возврате из фона.
+let _lastScheduledSignature = '';
+
 const NOTIFICATION_CHECK_MS = 60 * 1000;
 const NOTIFICATION_MAX_LOOKAHEAD_DAYS = 56;
 const NATIVE_HORIZON_DAYS = 30;
@@ -30,6 +35,18 @@ function _nativeCanExactAlarm() {
     catch (e) { return false; }
 }
 
+// Дешёвая подпись «что сейчас запланировано». Полного хэша расписания не
+// нужно: явные вызовы scheduleAllNotifications() приходят из sync/refresh/
+// settings, а здесь мы лишь отсеиваем «свернул-развернул» без изменений.
+function _notificationSignature() {
+    return [
+        Array.isArray(cachedSchedule) ? cachedSchedule.length : 0,
+        notificationsEnabled ? 1 : 0,
+        notificationAdvance,
+        notificationUnit,
+    ].join('|');
+}
+
 function initNotifications() {
     if (_notificationCheckInterval) clearInterval(_notificationCheckInterval);
     _notificationCheckInterval = setInterval(refreshNotifications, NOTIFICATION_CHECK_MS);
@@ -38,8 +55,11 @@ function initNotifications() {
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             refreshNotifications();
-            // После возврата из фона — попытка досрочного пересчёта.
-            scheduleAllNotifications();
+            // Пересчитываем нативные алярмы только если настройки/объём
+            // расписания реально поменялись с прошлого планирования.
+            if (_notificationSignature() !== _lastScheduledSignature) {
+                scheduleAllNotifications();
+            }
         }
     });
 }
@@ -65,6 +85,8 @@ function scheduleAllNotifications() {
     if (!notificationsEnabled) return;
     if (!_hasNativeBridge()) return;
     if (!_nativeHasPermission()) return;
+
+    _lastScheduledSignature = _notificationSignature();
 
     try {
         window.EzhNative.cancelAllNotifications();
