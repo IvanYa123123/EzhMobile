@@ -5,6 +5,7 @@ import time
 import threading
 import requests
 import urllib3
+import certifi
 
 from teacher_parser import parse_teachers_list, parse_ics_schedule
 
@@ -36,10 +37,12 @@ class SevSUTeacherPlanner:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
-        
-        # Фиксы для Android
+
+        # Симметрично planner.py — проверка сертификата включена.
+        # Раньше здесь стояло verify=False, что давало MITM-окно на
+        # HTTPS-запросах расписаний преподавателей.
         self.session.trust_env = False
-        self.session.verify = False
+        self.session.verify = certifi.where()
 
         try:
             from requests.adapters import HTTPAdapter
@@ -252,6 +255,6 @@ class SevSUTeacherPlanner:
         for slug in stale:
             try:
                 self.get_teacher_schedule(slug, force=True)
-            except Exception as e:
+            except Exception:
                 pass
             time.sleep(1.5)
