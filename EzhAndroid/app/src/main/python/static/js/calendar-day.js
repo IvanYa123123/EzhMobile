@@ -22,11 +22,16 @@ function toggleSchedule(dateStr) {
 // ============================================================
 
 function toggleExpandDay(dateStr) {
-    let grid = document.querySelector('.calendar-grid');
+    // Раньше здесь был document.querySelector('.calendar-grid'), но
+    // рядом могут жить гриды друзей/преподавателей — берём строго
+    // главный календарь по id.
+    let grid = document.getElementById('calendar');
     let col  = document.getElementById(`day-col-${dateStr}`);
     let btn  = document.querySelector(`#expand-btn-wrap-${dateStr} .day-expand-btn`);
     let headerEl = document.querySelector('.controls-header');
     let headerOffset = headerEl ? headerEl.offsetHeight + 25 : 90;
+
+    if (!col) return;
 
     function scrollToCol(alignTop) {
         let rect = col.getBoundingClientRect();
@@ -36,7 +41,7 @@ function toggleExpandDay(dateStr) {
 
     if (col.classList.contains('fullscreen-day')) {
         col.classList.remove('fullscreen-day');
-        grid.classList.remove('has-fullscreen');
+        if (grid) grid.classList.remove('has-fullscreen');
         if (btn) {
             btn.classList.remove('is-expanded');
             let lbl = btn.querySelector('.day-expand-label');
@@ -51,7 +56,7 @@ function toggleExpandDay(dateStr) {
         _layoutScheduleNotes();
     } else {
         col.classList.add('fullscreen-day');
-        grid.classList.add('has-fullscreen');
+        if (grid) grid.classList.add('has-fullscreen');
         if (btn) {
             btn.classList.add('is-expanded');
             let lbl = btn.querySelector('.day-expand-label');
