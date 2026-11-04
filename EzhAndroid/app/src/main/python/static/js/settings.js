@@ -305,9 +305,18 @@ function applyTheme() {
 function _saveTextFile(filename, mime, text) {
     if (typeof window.EzhNative !== 'undefined'
             && typeof window.EzhNative.saveFileFromText === 'function') {
-        const ok = window.EzhNative.saveFileFromText(filename, mime, text);
-        if (!ok) throw new Error('Не удалось сохранить файл в Downloads');
-        showUpdateNotification('✅ Файл сохранён в «Загрузки»');
+        const result = window.EzhNative.saveFileFromText(filename, mime, text);
+        if (!result) throw new Error('Не удалось сохранить файл');
+        // content://... — это MediaStore.Downloads (Android 10+):
+        // файл реально лежит в системных Загрузках.
+        // /data/.../files/... — приватная папка приложения (API < 29
+        // или fallback при ошибке MediaStore). Пользователю её в
+        // «Загрузках» не видно — не врём.
+        if (String(result).startsWith('content://')) {
+            showUpdateNotification('✅ Файл сохранён в «Загрузки»');
+        } else {
+            showUpdateNotification('✅ Файл сохранён в папку приложения');
+        }
         return;
     }
     const blob = new Blob([text], { type: mime + ';charset=utf-8' });
