@@ -41,3 +41,40 @@
 @media (max-width: 575.98px) {
     .group-display { max-width: 180px; font-size: 0.82em; }
 }
+
+/* ============================================================
+   Бейдж режима (Basic / Pro) рядом с названием группы.
+   В JS переключается через classList.toggle('basic-mode'/'pro-mode').
+   ============================================================ */
+.app-mode-badge-stylish {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.7em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.4;
+    cursor: pointer;
+    user-select: none;
+    vertical-align: middle;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.app-mode-badge-stylish.basic-mode {
+    background: var(--bg-surface-alt);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+.app-mode-badge-stylish.basic-mode:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.app-mode-badge-stylish.pro-mode {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+}
+.app-mode-badge-stylish.pro-mode:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
