@@ -59,9 +59,6 @@ planner = SevSUPlanner()
 teacher_planner = SevSUTeacherPlanner(BASE_DIR)
 os.makedirs(SCHEDULES_DIR, exist_ok=True)
 
-# Фоновое обновление ICS преподавателей имеет смысл только на десктопе /
-# в отладке, где Flask живёт долго. На Android процесс умирает вместе с
-# приложением — там это лишний расход.
 if not _ANDROID_DATA:
     try:
         teacher_planner.start_background_refresh(6)
@@ -74,7 +71,6 @@ limiter = Limiter(key_func=get_remote_address, app=app,
 
 @app.after_request
 def _headers(response):
-    # Кэшируем только УСПЕШНЫЕ файлы (код 200). Ошибки 404 кэшировать нельзя!
     if response.status_code == 200 and request.path.startswith('/static/'):
         response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
     elif not response.headers.get('Cache-Control'):
@@ -208,9 +204,6 @@ def _mark_synced(key):
 
 _VALID_SUBGROUPS = frozenset(("0", "1", "2"))
 _GROUP_RE = re.compile(r'^[A-Za-zА-Яа-яЁё0-9/._\-]{1,64}$')
-# Ссылка: разрешаем только http(s) и mailto, запрещаем пробелы и символы,
-# ломающие атрибут (кавычки/угловые скобки). Даже если клиент забудет
-# escapeHtml — XSS через href не пройдёт.
 _LINK_RE = re.compile(r'^(?:https?://|mailto:)[^\s"<>]{1,2000}$', re.IGNORECASE)
 _TIME_RANGE_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d - ([01]\d|2[0-3]):[0-5]\d$')
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
@@ -255,8 +248,6 @@ def load_custom_groups():
         return []
 
 def save_custom_groups(groups):
-    """Атомарная запись: tmp + os.replace. Сбой/выключение питания
-    не оставит битый JSON — старый файл останется нетронутым."""
     try:
         tmp = CUSTOM_GROUPS_FILE + '.tmp'
         with open(tmp, 'w', encoding='utf-8') as f:
@@ -573,8 +564,6 @@ def _restore_backup(conn):
                     cleaned.append(validate_group(str(name)))
                 except ValueError:
                     continue
-            # Если файл групп не записался — откатываем БД, чтобы не было
-            # рассинхрона «таблицы восстановлены, группы нет».
             if not save_custom_groups(cleaned):
                 raise RuntimeError("custom_groups save failed")
             restored['custom_groups'] = len(cleaned)
@@ -762,6 +751,34 @@ def update_lab_item(item_id):
 #  SCHEDULE
 # ============================================================
 
+def _save_schedule_cache(cache_file, schedule):
+    """Сохраняет расписание в кэш, но не затирает более полный кэш
+    неполным ответом (защита от сетевого сбоя/частичной выборки)."""
+    if not schedule:
+        return True
+    old = None
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                old = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            old = None
+    if old and len(schedule) < len(old) * 0.9:
+        old_max = max((str(x.get('date') or '') for x in old), default='')
+        new_max = max((str(x.get('date') or '') for x in schedule), default='')
+        if not (new_max and old_max and new_max < old_max):
+            _safe_print(f"[schedule_cache] защита: получено {len(schedule)}, "
+                        f"в кэше {len(old)} — оставляю кэш", flush=True)
+            return False
+    try:
+        tmp = cache_file + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(schedule, f, ensure_ascii=False)
+        os.replace(tmp, cache_file)
+    except OSError:
+        return False
+    return True
+
 @app.route("/api/schedule_all")
 @limiter.limit("240 per minute")
 def get_schedule_all():
@@ -771,17 +788,33 @@ def get_schedule_all():
     except ValueError:
         return jsonify([])
     subgroup = validate_subgroup(request.args.get('subgroup', '0'))
-    try:
-        cache_file = os.path.join(SCHEDULES_DIR,
-                                  f"{make_safe_filename(group)}_{subgroup}.json")
-        if os.path.exists(cache_file):
+    cache_file = os.path.join(SCHEDULES_DIR,
+                              f"{make_safe_filename(group)}_{subgroup}.json")
+
+    # 1) Сначала кэш — самый быстрый путь.
+    if os.path.exists(cache_file):
+        try:
             with open(cache_file, 'r', encoding='utf-8') as f:
                 return jsonify(json.load(f))
-        schedule = planner.get_semester_schedule(group, subgroup)
-        return jsonify(schedule)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # 2) Кэша нет — тянем с сервера СевГУ.
+    try:
+        schedule, exhausted = planner.get_semester_schedule(group, subgroup)
     except Exception as e:
-        _safe_print(f"Error fetching schedule: {e}")
+        _safe_print(f"Error fetching schedule: {e}", flush=True)
         return jsonify([])
+
+    # 3) Сохраняем в кэш + помечаем синхронизированным, только если
+    # планер НЕ сообщил, что бюджет времени исчерпан. Иначе sync_schedule
+    # через 0.5 с сделает ту же работу второй раз (двойной запрос).
+    if schedule:
+        _save_schedule_cache(cache_file, schedule)
+        if not exhausted:
+            _mark_synced(f"{group}_{subgroup}")
+
+    return jsonify(schedule)
 
 @app.route("/api/schedule_sync")
 @limiter.limit("120 per minute")
@@ -802,37 +835,18 @@ def sync_schedule():
                               f"{make_safe_filename(group)}_{subgroup}.json")
 
     try:
-        schedule = planner.get_semester_schedule(group, subgroup)
+        schedule, exhausted = planner.get_semester_schedule(group, subgroup)
         if schedule:
-            if os.path.exists(cache_file):
-                try:
-                    with open(cache_file, 'r', encoding='utf-8') as f:
-                        old = json.load(f)
-                    if len(schedule) < len(old) * 0.9:
-                        # Легитимное сокращение в конце семестра: новый
-                        # ответ покрывает более раннюю дату, чем старый.
-                        # В этом случае не блокируем обновление.
-                        old_max = max((str(x.get('date') or '') for x in old), default='')
-                        new_max = max((str(x.get('date') or '') for x in schedule), default='')
-                        if not (new_max and old_max and new_max < old_max):
-                            _safe_print(
-                                f"[sync] защита: получено {len(schedule)}, в кэше {len(old)} — оставляю кэш",
-                                flush=True)
-                            return jsonify(old)
-                except (json.JSONDecodeError, OSError):
-                    pass
-            try:
-                tmp = cache_file + '.tmp'
-                with open(tmp, 'w', encoding='utf-8') as f:
-                    json.dump(schedule, f, ensure_ascii=False)
-                os.replace(tmp, cache_file)
-            except OSError:
-                pass
-            _mark_synced(sync_key)
+            _save_schedule_cache(cache_file, schedule)
+            # Помечаем синхронизированным, только если планер не уведомил
+            # об исчерпании бюджета времени (иначе на следующем sync
+            # попробуем дотянуть оставшиеся недели).
+            if not exhausted:
+                _mark_synced(sync_key)
             return jsonify(schedule)
 
-        # Пустой ответ может быть как «нет пар», так и сетевая ошибка.
-        # Не помечаем синхронизацию успешной и отдаём старый кэш, если он есть.
+        # Пустой ответ — отдаём старый кэш, если есть, и НЕ помечаем
+        # синхронизацию успешной.
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -912,8 +926,6 @@ def export_ics():
     lines.append("END:VCALENDAR")
 
     from urllib.parse import quote
-    # Санитизация имени: group может содержать «/», что сломает
-    # MediaStore.Downloads на Android.
     safe_group = make_safe_filename(group)
     filename = f"schedule_{safe_group}_{subgroup}.ics"
     return Response(
@@ -1020,8 +1032,6 @@ def manage_subjects():
         if len(subject) > 200:
             return jsonify({"error": "subject too long"}), 400
         link = (data.get('link', '') or '').strip()
-        # Строгая проверка: только http(s)/mailto без кавычек и угловых
-        # скобок. Даже если клиент забудет escapeHtml — атрибут не сломается.
         if link and not _LINK_RE.match(link):
             link = ''
         conn.execute(
