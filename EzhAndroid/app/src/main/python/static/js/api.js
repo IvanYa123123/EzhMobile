@@ -1,18 +1,38 @@
 // Обёртки над fetch. Все запросы автоматически проверяют на ошибки HTTP.
 // API_BASE подставляется из index.html: пустая строка (Flask) или
 // 'http://127.0.0.1:5000' (WebViewAssetLoader на Android).
+//
+// Таймаут: 30 секунд. Без него зависший бэкенд/СевГУ держит UI на
+// лоадере до TCP-таймаута ОС (минуты).
 
 const _API_BASE = (typeof window.API_BASE === 'string') ? window.API_BASE : '';
 function _api(path) { return _API_BASE + path; }
 
+const API_TIMEOUT_MS = 30000;
+
+async function _fetchWithTimeout(url, opts = {}) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+    try {
+        return await fetch(url, Object.assign({}, opts, { signal: ctrl.signal }));
+    } catch (e) {
+        if (e && (e.name === 'AbortError' || e.code === 20)) {
+            throw new Error('timeout');
+        }
+        throw e;
+    } finally {
+        clearTimeout(t);
+    }
+}
+
 async function apiGet(url) {
-    const r = await fetch(_api(url));
+    const r = await _fetchWithTimeout(_api(url));
     if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
     return r.json();
 }
 
 async function apiPost(url, body) {
-    const r = await fetch(_api(url), {
+    const r = await _fetchWithTimeout(_api(url), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
@@ -22,7 +42,7 @@ async function apiPost(url, body) {
 }
 
 async function apiPut(url, body) {
-    const r = await fetch(_api(url), {
+    const r = await _fetchWithTimeout(_api(url), {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
@@ -32,7 +52,7 @@ async function apiPut(url, body) {
 }
 
 async function apiDelete(url) {
-    const r = await fetch(_api(url), { method: 'DELETE' });
+    const r = await _fetchWithTimeout(_api(url), { method: 'DELETE' });
     if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
     return r.json();
 }
