@@ -38,7 +38,11 @@
             window.expandedDayDateStr = dateStr;
             switchTab('day');
         } else {
-            if (typeof toggleExpandDay === 'function' && window.expandedDayDateStr !== dateStr) {
+            // toggleExpandDay сам решает, разворачивать или сворачивать —
+            // проверяет наличие .fullscreen-day у колонки. Старая проверка
+            // «expandedDayDateStr !== dateStr» ломала сворачивание повторным
+            // кликом по развёрнутому дню.
+            if (typeof toggleExpandDay === 'function') {
                 toggleExpandDay(dateStr);
             }
         }
