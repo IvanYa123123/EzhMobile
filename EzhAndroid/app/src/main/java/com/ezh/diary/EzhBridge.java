@@ -183,16 +183,32 @@ public class EzhBridge {
 
     @JavascriptInterface
     public void cancelAllNotifications() {
-        SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        Set<String> ids = new HashSet<>(loadIds());
-        for (String id : ids) cancelNotification(id);
-        saveIds(new HashSet<>());
+        try {
+            AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            Set<String> ids = new HashSet<>(loadIds());
 
-        SharedPreferences.Editor editor = prefs.edit();
-        for (String key : new HashSet<>(prefs.getAll().keySet())) {
-            if (key.startsWith(KEY_SPEC_PREFIX)) editor.remove(key);
-        }
-        editor.remove(KEY_IDS).apply();
+            // Отменяем алярмы в цикле, но SharedPreferences пишем ОДИН раз
+            // в конце. Раньше каждый cancelNotification() делал
+            // loadIds()+saveIds() — при ~180 будильниках это 180 чтений
+            // и 180 записей подряд, заметный лаг на слабых устройствах.
+            if (am != null) {
+                for (String id : ids) {
+                    Intent intent = new Intent(ctx, NotificationReceiver.class);
+                    intent.setAction("com.ezh.diary.NOTIFY_" + id);
+                    int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                    if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+                    PendingIntent pi = PendingIntent.getBroadcast(ctx, id.hashCode(), intent, flags);
+                    am.cancel(pi);
+                }
+            }
+
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor = prefs.edit();
+            for (String key : new HashSet<>(prefs.getAll().keySet())) {
+                if (key.startsWith(KEY_SPEC_PREFIX)) editor.remove(key);
+            }
+            editor.remove(KEY_IDS).apply();
+        } catch (Exception ignored) {}
     }
 
     @JavascriptInterface
