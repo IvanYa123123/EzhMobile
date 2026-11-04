@@ -1,0 +1,163 @@
+
+# ============================================================
+
+# EzhMobile — .gitignore
+
+# ============================================================
+
+# ---------- Python ----------
+
+**pycache**/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Виртуальные окружения
+
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Тесты / покрытие
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ---------- Flask / runtime ----------
+
+# База данных и её WAL/SHM — создаются при первом запуске
+
+EzhAndroid/app/src/main/python/planner.db
+EzhAndroid/app/src/main/python/planner.db-wal
+EzhAndroid/app/src/main/python/planner.db-shm
+
+# Кэш расписаний, скачиваемый с сервера СевГУ во время работы
+
+EzhAndroid/app/src/main/python/schedules/
+EzhAndroid/app/src/main/python/teacher_schedules/
+
+# Пользовательские данные, генерируемые на устройстве
+
+EzhAndroid/app/src/main/python/custom_groups.json
+EzhAndroid/app/src/main/python/.sync_times.json
+
+# ---------- Android / Gradle ----------
+
+.gradle/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Android Studio / IDEA
+
+.idea/
+*.iml
+*.ipr
+*.iws
+*.hprof
+
+# Подписные ключи и keystore — никогда не коммитить
+
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+
+# Скомпилированные APK/AAB
+
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# ---------- Chaquopy ----------
+
+# Собранные нативные библиотеки Python — пересоздаются при сборке
+
+EzhAndroid/app/src/main/python/.chaquopy/
+
+# ---------- Node (на случай появления тулинга) ----------
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---------- Логи ----------
+
+*.log
+logs/
+
+# ---------- Env ----------
+
+.env
+.env.*
+!.env.example
+
+# ---------- OS ----------
+
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+.Trash-*
+
+# ---------- IDE ----------
+
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ---------- Прочее ----------
+
+*.bak
+*.tmp
+*.orig
+*.rej
+
+```
+
+Кладётся в корень репозитория рядом с `BUILD.md` и `README.md`.
+
+Пара замечаний:
+
+- `gradle-wrapper.jar` **не** игнорируется — по `BUILD.md` его нужно положить в репо вручную (в отличие от остальных `.jar`).
+- `static/` целиком не игнорируется: если вы пока не удалили корневой мусорный дубль, git продолжит его отслеживать. Удалите вручную через `git rm -r static` после того, как убедитесь, что файлы в `EzhAndroid/.../python/static/` на месте.
+- Vendor-ассеты (`python/static/vendor/*`, `python/static/fonts/inter-variable.woff2`) тоже **не** игнорируются — по `BUILD.md` они коммитятся.
+- Если репо уже что-то отслеживает из списка (например, случайно закоммиченный `planner.db`), после добавления `.gitignore` нужно почистить индекс: `git rm --cached <path>`.
