@@ -62,7 +62,7 @@ def _headers(response):
     # Кэшируем только УСПЕШНЫЕ файлы (код 200). Ошибки 404 кэшировать нельзя!
     if response.status_code == 200 and request.path.startswith('/static/'):
         response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
-    else:
+    elif not response.headers.get('Cache-Control'):
         response.headers['Cache-Control'] = 'no-store'
 
     csp = [
@@ -340,6 +340,8 @@ def update_task(task_id):
             return jsonify({"error": "required"}), 400
         if len(text) > 2000:
             return jsonify({"error": "text too long"}), 400
+        if status not in ('green', 'orange', 'red', 'completed'):
+            status = 'green'
         conn.execute("UPDATE tasks SET date=?, status=?, text=? WHERE id=?",
                      (date, status, text, task_id))
         conn.commit()
@@ -555,12 +557,20 @@ def manage_labs():
     conn = get_db()
     if request.method == "POST":
         data = request.get_json(silent=True)
+        if data is None:
+            data = []
         items = data if isinstance(data, list) else [data]
         for item in items:
+            if not isinstance(item, dict):
+                continue
             group, subject = item.get('group'), item.get('subject')
             if not group or not subject:
                 continue
-            comp, tot = max(0, int(item.get('completed', 0))), max(0, int(item.get('total', 0)))
+            try:
+                comp = max(0, int(item.get('completed') or 0))
+                tot = max(0, int(item.get('total') or 0))
+            except (TypeError, ValueError):
+                comp, tot = 0, 0
             if comp > tot:
                 comp = tot
             conn.execute(
@@ -616,7 +626,13 @@ def sync_lab_items():
     conn = get_db()
     touched = set()
     for spec in items:
-        subject, count = spec.get('subject'), int(spec.get('count') or 0)
+        if not isinstance(spec, dict):
+            continue
+        subject = spec.get('subject')
+        try:
+            count = int(spec.get('count') or 0)
+        except (TypeError, ValueError):
+            count = 0
         if not subject or count <= 0 or count > 200:
             continue
         touched.add(subject)
@@ -688,7 +704,10 @@ def update_lab_item(item_id):
     if not row:
         return jsonify({"error": "not found"}), 404
     new_title = str(data.get('title', row["title"])).strip()[:200] or row["title"]
-    new_comp = 1 if int(data.get('completed', row["completed"])) else 0
+    try:
+        new_comp = 1 if int(data.get('completed', row["completed"])) else 0
+    except (TypeError, ValueError):
+        new_comp = 0
     conn.execute("UPDATE lab_items SET title=?, completed=? WHERE id=?",
                  (new_title, new_comp, item_id))
     _recalc_lab_progress(conn, row["group_name"], row["subject"])
@@ -735,10 +754,11 @@ def sync_schedule():
     if not force and not _needs_sync(sync_key):
         return jsonify([])
 
+    cache_file = os.path.join(SCHEDULES_DIR,
+                              f"{make_safe_filename(group)}_{subgroup}.json")
+
     try:
         schedule = planner.get_semester_schedule(group, subgroup)
-        cache_file = os.path.join(SCHEDULES_DIR,
-                                  f"{make_safe_filename(group)}_{subgroup}.json")
         if schedule:
             if os.path.exists(cache_file):
                 try:
@@ -759,12 +779,25 @@ def sync_schedule():
             except OSError:
                 pass
             _mark_synced(sync_key)
-        else:
-            if not os.path.exists(cache_file):
-                _mark_synced(sync_key)
-        return jsonify(schedule)
+            return jsonify(schedule)
+
+        # Пустой ответ может быть как «нет пар», так и сетевая ошибка.
+        # Не помечаем синхронизацию успешной и отдаём старый кэш, если он есть.
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return jsonify(json.load(f))
+            except (json.JSONDecodeError, OSError):
+                pass
+        return jsonify([])
     except Exception as e:
         _safe_print(f"Error syncing schedule: {e}", flush=True)
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return jsonify(json.load(f))
+            except (json.JSONDecodeError, OSError):
+                pass
         return jsonify([])
 
 @app.route("/api/schedule.ics")
@@ -822,7 +855,7 @@ def export_ics():
             f"DTSTART:{dt_start.strftime('%Y%m%dT%H%M%S')}",
             f"DTEND:{dt_end.strftime('%Y%m%dT%H%M%S')}",
             f"SUMMARY:{_ics_escape(summary)}",
-            f"DESCRIPTION:{_ics_escape(chr(92) + 'n'.join(desc_parts))}",
+            f"DESCRIPTION:{_ics_escape(chr(10).join(desc_parts))}",
             f"LOCATION:{_ics_escape(location)}",
             "END:VEVENT",
         ])
@@ -1056,14 +1089,24 @@ def manage_tracked_teachers():
             return jsonify({"error": "invalid data"}), 400
         if len(name) > 200 or len(slug) > 100:
             return jsonify({"error": "field too long"}), 400
-        cursor = conn.execute(
+
+        cur = conn.execute(
             "INSERT OR IGNORE INTO tracked_teachers (name, slug) VALUES (?, ?)",
             (name, slug))
         conn.commit()
-        if cursor.lastrowid:
-            return jsonify({"id": cursor.lastrowid, "name": name, "slug": slug})
-        row = conn.execute("SELECT id FROM tracked_teachers WHERE slug=?", (slug,)).fetchone()
-        return jsonify({"id": row["id"], "name": name, "slug": slug, "already": True})
+
+        row = conn.execute(
+            "SELECT id, name, slug FROM tracked_teachers WHERE slug=?",
+            (slug,)).fetchone()
+        if not row:
+            return jsonify({"error": "insert failed"}), 500
+
+        return jsonify({
+            "id": row["id"],
+            "name": row["name"],
+            "slug": row["slug"],
+            "already": cur.rowcount == 0,
+        })
     return jsonify([{"id": r["id"], "name": r["name"], "slug": r["slug"]}
                     for r in conn.execute(
                         "SELECT id, name, slug FROM tracked_teachers ORDER BY id").fetchall()])
