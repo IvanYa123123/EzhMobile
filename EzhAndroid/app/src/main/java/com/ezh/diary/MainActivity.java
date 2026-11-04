@@ -43,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private EzhBridge bridge;
 
     private static boolean isPythonStarting = false;
+    private static final Object PY_START_LOCK = new Object();
 
     private ValueCallback<Uri[]> pendingFileCallback;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
@@ -189,8 +190,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startPythonServer() {
-        if (isPythonStarting) return;
-        isPythonStarting = true;
+        // Гонка: поворот экрана пересоздаёт Activity, два потока могут
+        // одновременно пройти проверку и стартовать два waitress на
+        // порту 5000 → Address already in use. Синхронизируемся.
+        synchronized (PY_START_LOCK) {
+            if (isPythonStarting) return;
+            isPythonStarting = true;
+        }
 
         final File dataDir = getFilesDir();
         new Thread(() -> {
@@ -214,17 +220,20 @@ public class MainActivity extends AppCompatActivity {
                 // В нормальном режиме waitress.serve() не возвращает
                 // управление — finally не выполнится, isPythonStarting
                 // останется true и защитит от повторного старта.
-                //
                 // Если сервер упал или вернулся (что для serve() — аномалия),
-                // сбрасываем флаг: следующая Activity в том же процессе
-                // сможет поднять сервер заново.
-                isPythonStarting = false;
+                // сбрасываем флаг под тем же локом: следующая Activity
+                // в том же процессе сможет поднять сервер заново.
+                synchronized (PY_START_LOCK) {
+                    isPythonStarting = false;
+                }
             }
         }, "py-server").start();
     }
 
     private void pollServerAndLoad() {
-        for (int i = 0; i < 80; i++) {
+        // 200 × 300 мс = 60 с. На холодном старте Chaquopy + waitress
+        // на старом устройстве 24 с может не хватить — увеличили до 60.
+        for (int i = 0; i < 200; i++) {
             try {
                 Socket sock = new Socket();
                 sock.connect(new InetSocketAddress("127.0.0.1", PORT), 200);
@@ -249,7 +258,7 @@ public class MainActivity extends AppCompatActivity {
         }
         runOnUiThread(() -> {
             if (splashStatus != null)
-                splashStatus.setText("Сервер не запустился за 24 секунды.");
+                splashStatus.setText("Сервер не запустился за 60 секунд.");
         });
     }
 
