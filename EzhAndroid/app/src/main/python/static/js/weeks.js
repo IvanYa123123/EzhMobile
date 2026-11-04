@@ -2,6 +2,10 @@
 
 const _WEEK_PARITY_ANCHOR_MS = Date.UTC(2020, 0, 6);
 
+// Слушатель shown.bs.dropdown вешается один раз на кнопку, а не на каждый
+// updateWeekDropdown — иначе при многократной навигации они копятся.
+let _weekDropdownScrollBound = false;
+
 function _weekParityLabel(weekDate) {
     const d = new Date(Date.UTC(weekDate.getFullYear(), weekDate.getMonth(), weekDate.getDate()));
     const days = Math.floor((d - _WEEK_PARITY_ANCHOR_MS) / 86400000);
@@ -55,12 +59,15 @@ function updateWeekDropdown() {
     const btnParity = _weekParityLabel(dBtn);
     btn.innerHTML = `📅 ${dBtn.toLocaleDateString('ru-RU', {day:'numeric', month:'short'})} - ${endDBtn.toLocaleDateString('ru-RU', {day:'numeric', month:'short'})} <span class="week-badge ${btnParity.cls}">${btnParity.label}</span>`;
 
-    btn.addEventListener('shown.bs.dropdown', () => {
-        setTimeout(() => {
-            let active = menu.querySelector('.dropdown-item.active');
-            if (active) active.scrollIntoView({ block: 'center' });
-        }, 30);
-    }, { once: true });
+    if (!_weekDropdownScrollBound) {
+        _weekDropdownScrollBound = true;
+        btn.addEventListener('shown.bs.dropdown', () => {
+            setTimeout(() => {
+                let active = menu.querySelector('.dropdown-item.active');
+                if (active) active.scrollIntoView({ block: 'center' });
+            }, 30);
+        });
+    }
 }
 
 function jumpToWeek(offsetVal) {
@@ -68,7 +75,10 @@ function jumpToWeek(offsetVal) {
     realBase.setDate(realBase.getDate() - (realBase.getDay() === 0 ? 6 : realBase.getDay() - 1));
     currentBaseDate = new Date(realBase);
     currentBaseDate.setDate(currentBaseDate.getDate() + (parseInt(offsetVal) * 7));
-    if (expandedDayDateStr !== null) expandedDayDateStr = getLocalDateStr(currentBaseDate);
+    // Раньше тут был expandedDayDateStr = getLocalDateStr(currentBaseDate),
+    // но при этом колонка визуально не разворачивалась — стрелки ←/→
+    // начинали листать дни вместо недель. Теперь просто сбрасываем.
+    expandedDayDateStr = null;
     if (typeof _verticalDayOffset !== 'undefined') _verticalDayOffset = null;
     renderCalendar();
     if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
@@ -78,7 +88,8 @@ function goToToday() {
     let realTodayStr = getLocalDateStr(new Date());
     currentBaseDate = new Date();
     currentBaseDate.setDate(currentBaseDate.getDate() - (currentBaseDate.getDay() === 0 ? 6 : currentBaseDate.getDay() - 1));
-    if (expandedDayDateStr !== null) expandedDayDateStr = realTodayStr;
+    // См. комментарий в jumpToWeek — не оставляем стрелки в дневном режиме.
+    expandedDayDateStr = null;
     if (typeof _verticalDayOffset !== 'undefined') _verticalDayOffset = null;
     renderCalendar();
     if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
@@ -87,7 +98,9 @@ function goToToday() {
 function changeWeek(offset) {
     window._calDir = offset > 0 ? 'right' : 'left';
     currentBaseDate.setDate(currentBaseDate.getDate() + (offset * 7));
-    if (expandedDayDateStr !== null) expandedDayDateStr = getLocalDateStr(currentBaseDate);
+    // Если день был развёрнут на всю ширину — сбрасываем, иначе
+    // navigatePrev/Next уедут в дневной режим, а на экране — неделя.
+    expandedDayDateStr = null;
     if (typeof _verticalDayOffset !== 'undefined') _verticalDayOffset = null;
     renderCalendar();
     if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
