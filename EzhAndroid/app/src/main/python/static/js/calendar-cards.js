@@ -110,4 +110,34 @@ function _renderPairCard(item) {
     }
 
     let editIconHtml = item.is_custom
-        ? `<
+        ? `<span class="schedule-item-edit"
+                onclick="openCustomScheduleModal('${item.date}', ${item.custom_id})"
+                title="Редактировать">✏️</span>`
+        : '';
+
+    const teacherHtml = (displayTeacher && showTeacher)
+        ? `<div class="schedule-item-teacher">${escapeHtml(displayTeacher)}</div>` : '';
+    const locationHtml = (displayLocation && showLocation)
+        ? `<div class="schedule-item-location">${escapeHtml(displayLocation)}</div>` : '';
+
+    const customStyle = item.is_custom
+        ? (item.is_event ? 'border-left: 3px solid var(--event-color);' : 'border-left: 3px solid var(--custom-pair-color);')
+        : 'border-left: 3px solid var(--accent);';
+
+    return `
+        <div class="schedule-item shadow-sm" style="${customStyle}">
+            <div class="schedule-item-top">
+                <span class="schedule-item-time">
+                    <strong class="text-primary">${escapeHtml(item.time_range)}</strong>
+                    ${editIconHtml}
+                </span>
+                <span class="add-task-btn" onclick="createTaskFromSchedule('${item.date}', '${safeTaskSubject}')">+ Заметка</span>
+            </div>
+            ${typeBadge ? `<div class="schedule-item-badge">${typeBadge}</div>` : ''}
+            <div class="schedule-item-title">${lessonHtml}</div>
+            ${teacherHtml}
+            ${locationHtml}
+            <div class="schedule-item-footer"></div>
+        </div>
+    `;
+}
