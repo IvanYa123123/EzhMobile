@@ -15,11 +15,20 @@ def start_server(data_dir: str):
     for fname in ("VERSION", "teachers.json"):
         src = os.path.join(bundle_dir, fname)
         dst = os.path.join(data_dir, fname)
-        if os.path.isfile(src) and not os.path.isfile(dst):
-            try:
+        if not os.path.isfile(src):
+            continue
+        try:
+            if fname == "VERSION":
+                # VERSION — не пользовательские данные. Всегда перезаписываем,
+                # иначе после апгрейда APK в data-dir остаётся старая версия
+                # и APP_VERSION навсегда «залипает» на прошлой.
                 shutil.copy2(src, dst)
-            except OSError:
-                pass
+            elif not os.path.isfile(dst):
+                # teachers.json содержит обновлённый кэш с сервера —
+                # не затираем его при апгрейде.
+                shutil.copy2(src, dst)
+        except OSError:
+            pass
 
     from app import app
 
