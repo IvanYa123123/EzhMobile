@@ -70,6 +70,12 @@ let showWidgetLabs    = localStorage.getItem('showWidgetLabs')    !== 'false';
 let showWidgetPacing  = localStorage.getItem('showWidgetPacing')  !== 'false';
 let showWidgetNotes   = localStorage.getItem('showWidgetNotes')   !== 'false';
 
+// Флаги для виджетов, чьи JS-файлы не входят в базовую сборку.
+let showWidgetSuggestions = localStorage.getItem('showWidgetSuggestions') !== 'false';
+let showWidgetLabsPro     = localStorage.getItem('showWidgetLabsPro')     !== 'false';
+let showWidgetMoodleAvg   = localStorage.getItem('showWidgetMoodleAvg')   !== 'false';
+let showWidgetMoodleSubj  = localStorage.getItem('showWidgetMoodleSubj')  !== 'false';
+
 // Переменная для вкладки "Люди" (friends или teachers)
 let friendsTeachersTab = localStorage.getItem('friendsTeachersTab') || 'friends';
 
@@ -79,6 +85,9 @@ function applyFriendsTeachersVisibility() {
     const btnFriends = document.getElementById('btnTabFriends');
     const btnTeachers = document.getElementById('btnTabTeachers');
     if (!friendsEl || !teachersEl) return;
+
+    if (btnFriends)  btnFriends.checked  = (friendsTeachersTab === 'friends');
+    if (btnTeachers) btnTeachers.checked = (friendsTeachersTab === 'teachers');
 
     if (friendsTeachersTab === 'friends') {
         friendsEl.style.display = '';
@@ -105,6 +114,44 @@ function switchFriendsTeachersTab(tab) {
     if (tab === 'friends' && typeof renderFriendsCalendar === 'function') {
         try { renderFriendsCalendar(); } catch (e) { console.error(e); }
     }
+}
+
+// ============================================================
+//  МИНИ-ЗАГЛУШКИ ДЛЯ НЕОБЯЗАТЕЛЬНЫХ МОДУЛЕЙ
+// ============================================================
+
+function ezhJump() {
+    if (typeof goToToday === 'function') {
+        goToToday();
+    }
+}
+window.ezhJump = ezhJump;
+
+function renderSuggestions() {
+    const el = document.getElementById('suggestionsContent');
+    if (el) {
+        el.innerHTML = '<div class="text-muted small text-center py-2">Модуль предложений не подключён.</div>';
+    }
+    const nav = document.getElementById('suggestionsNavRow');
+    if (nav) nav.style.display = 'none';
+}
+function suggestionsPrev() {}
+function suggestionsNext() {}
+
+function openMoodleModal() {
+    alert('Еж Про (Moodle) не подключён в этой сборке.');
+}
+function doMoodleLogin() {}
+function loadMoodleStats() {}
+function openMoodleSetupModal() {}
+function saveMoodleSetup() {}
+function doMoodleLogout() {}
+function renderProSubjectChart() {}
+function allowDrop(e) {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+}
+function handleSemesterDrop(e, target) {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
 }
 
 // ============================================================
@@ -167,18 +214,26 @@ function cancelUndo() {
 }
 
 // ============================================================
-//  ВИДЖЕТ «ЗАМЕТКИ»
+//  ВИДЖЕТ «ЗАМЕТКИ» (1/2/3)
 // ============================================================
 
 function initNotesWidget() {
-    const ta = document.getElementById('notesWidgetText');
-    if (!ta) return;
-    try { ta.value = localStorage.getItem('notesWidget') || ''; } catch (e) {}
+    for (let i = 1; i <= 3; i++) {
+        const ta = document.getElementById('notesWidgetText' + i);
+        if (!ta) continue;
+        try {
+            ta.value = localStorage.getItem('notesWidget' + i) || '';
+        } catch (e) {}
+    }
 }
 
 function onNotesWidgetInput(el) {
-    if (!el) return;
-    try { localStorage.setItem('notesWidget', el.value); } catch (e) {}
+    if (!el || !el.id) return;
+    const n = el.id.replace('notesWidgetText', '');
+    if (!n) return;
+    try {
+        localStorage.setItem('notesWidget' + n, el.value);
+    } catch (e) {}
 }
 
 // ============================================================
