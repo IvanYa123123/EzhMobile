@@ -44,9 +44,6 @@ def parse_teachers_list(html: str) -> list:
     return _parse_teachers_regex(html)
 
 def _parse_teachers_bs4(html: str) -> list:
-    # Пытаемся взять быстрый lxml-парсер; если wheel'а нет —
-    # откатываемся на встроенный html.parser, чтобы не ронять
-    # весь список преподавателей в fallback-регекс.
     try:
         soup = BeautifulSoup(html, 'lxml')
     except Exception:
@@ -64,14 +61,24 @@ def _parse_teachers_bs4(html: str) -> list:
         if slug in seen:
             continue
 
-        # Имя обычно в родительском li/div, не в самой ссылке.
-        # Ссылка на странице выглядит как "Открыть расписание" или похоже.
+        # Идём вверх вручную до ближайшего li/div/tr/article, но не глубже
+        # 5 уровней. Раньше здесь был a.find_parent([...], limit=5) —
+        # в bs4 4.12 параметр limit уходит в find_parents и означает
+        # «максимум результатов», а не «глубину». Поведение на разных
+        # версиях bs4 разное, поэтому переписали явно.
         name = ''
-        parent = a.find_parent(['li', 'div', 'tr', 'article'], limit=5)
-        if parent:
-            # Сначала пытаемся взять текст из span/div/td/h3/h4 — до ссылки
+        parent = None
+        cur = a.parent
+        for _ in range(5):
+            if cur is None:
+                break
+            if cur.name in ('li', 'div', 'tr', 'article'):
+                parent = cur
+                break
+            cur = cur.parent
+
+        if parent is not None:
             for tag in parent.find_all(['span', 'div', 'td', 'h3', 'h4', 'p'], limit=8):
-                # Пропускаем теги, которые содержат ссылки
                 if tag.find('a', href=True):
                     continue
                 txt = tag.get_text(' ', strip=True)
@@ -79,7 +86,6 @@ def _parse_teachers_bs4(html: str) -> list:
                     name = txt
                     break
             if not name:
-                # Fallback: весь текст родителя без ссылок
                 text_parts = []
                 for child in parent.descendants:
                     if getattr(child, 'name', None) == 'a':
@@ -113,7 +119,6 @@ def _parse_teachers_regex(html: str) -> list:
         if slug in seen:
             continue
 
-        # Берём контекст до этой ссылки — там обычно имя в отдельном блоке
         start = max(0, m.start() - 400)
         ctx = html[start:m.start()]
         text_blocks = re.findall(r'>([^<>]{5,120})<', ctx)
@@ -136,19 +141,6 @@ def _parse_teachers_regex(html: str) -> list:
 # ==================================================================
 
 def parse_ics_schedule(ics_text: str) -> list:
-    """Парсит ICS-календарь в наш формат расписания.
-
-    Возвращает список словарей:
-      [{'date': '2025-10-13',
-        'n': 1,                       # номер пары (1-8), 0 — не определено
-        'time_range': '08:30 - 10:00',
-        'lesson': 'Математика',
-        'type_name': 'Лекция',
-        'location': 'Ауд. I-416',
-        'groups': ['ПИН/б-24-1-о']}, ...]
-
-    Отсортирован по дате и номеру пары.
-    """
     if not ics_text or 'BEGIN:VCALENDAR' not in ics_text:
         return []
 
@@ -163,18 +155,11 @@ def parse_ics_schedule(ics_text: str) -> list:
     return result
 
 def _split_events(ics_text: str) -> list:
-    """Разбивает ICS на отдельные VEVENT-блоки.
-
-    Обрабатывает:
-      • \r\n и \n переносы
-      • folded lines (продолжения строк, начинающиеся с пробела/таба)
-    """
     text = ics_text.replace('\r\n', '\n').replace('\r', '\n')
     text = re.sub(r'\n[ \t]', '', text)
     return re.findall(r'BEGIN:VEVENT(.*?)END:VEVENT', text, re.DOTALL)
 
 def _unfold_field(value: str) -> str:
-    """Декодирует экранирование ICS-значений."""
     return (value
             .replace('\\n', '\n')
             .replace('\\N', '\n')
@@ -183,21 +168,12 @@ def _unfold_field(value: str) -> str:
             .replace('\\\\', '\\'))
 
 def _get_field(event_block: str, name: str) -> str:
-    """Извлекает значение поля X-NAME из VEVENT.
-
-    Учитывает параметры: DTSTART;TZID=Europe/Moscow:20251013T083000
-    """
     m = re.search(rf'^{name}(?:;[^:\n]+)?:(.*)$', event_block, re.MULTILINE)
     if not m:
         return ''
     return _unfold_field(m.group(1).strip())
 
 def _parse_ics_datetime(s: str):
-    """Поддерживает форматы:
-      20251013T083000
-      20251013T083000Z
-      20251013
-    """
     s = (s or '').strip()
     if not s:
         return None
@@ -222,9 +198,9 @@ _TIME_TO_PAIR = {
     (8, 30): 1,
     (10, 10): 2,
     (11, 50): 3,
-    (13, 50): 3,   # старое время 3 пары
+    (13, 50): 3,
     (14, 0): 4,
-    (15, 20): 4,   # старое время 4 пары
+    (15, 20): 4,
     (15, 40): 5,
     (17, 20): 6,
     (19, 0): 7,
@@ -244,7 +220,6 @@ _TYPE_PATTERNS = [
 ]
 
 def _parse_event(block: str):
-    """Парсит один VEVENT в наш формат."""
     dtstart = _get_field(block, 'DTSTART')
     dtend = _get_field(block, 'DTEND')
     if not dtstart or not dtend:
@@ -272,24 +247,12 @@ def _parse_event(block: str):
     }
 
 def _parse_summary(summary: str, description: str):
-    """Из SUMMARY + DESCRIPTION пытается выделить предмет, тип, группы.
-
-    Возможные форматы SUMMARY:
-      "Математика"
-      "Математика (Лекция)"
-      "Лекция. Математика"
-      "Математика, ЛЗ"
-      "Математика (ЛЗ, ПИН/б-24-1-о)"
-      "Math (Lection) (Group)"      ← раньше ломалось: type="Group"
-    """
     summary = (summary or '').strip()
     description = (description or '').strip()
 
     lesson = summary
     type_name = ''
 
-    # 1) Тип в скобках — только если содержимое похоже на тип занятия.
-    #    Иначе оставляем скобки частью lesson (например, «(Group)»).
     m = re.search(r'^(.*?)\s*\(([^()]+)\)\s*$', summary)
     if m:
         inner = m.group(2).strip()
@@ -300,10 +263,8 @@ def _parse_summary(summary: str, description: str):
         )
         if is_type or short_type:
             lesson = m.group(1).strip()
-            # Внутри скобок может быть "ЛЗ, ПИН/б-24-1-о" — берём первое
             type_name = inner.split(',')[0].strip()
 
-    # 2) Тип через запятую: "Математика, ЛЗ"
     if not type_name:
         m = re.search(r'^(.*?),\s*([^,]+)$', summary)
         if m:
@@ -312,7 +273,6 @@ def _parse_summary(summary: str, description: str):
                 lesson = m.group(1).strip()
                 type_name = candidate
 
-    # 3) Тип в начале: "Лекция. Математика"
     if not type_name:
         m = re.match(r'^(Лекция|ПЗ|ЛЗ|Семинар|Зачёт|Экзамен)\.?\s*[:\-—]?\s*(.+)$',
                      summary, re.I)
@@ -320,7 +280,6 @@ def _parse_summary(summary: str, description: str):
             type_name = m.group(1).strip()
             lesson = m.group(2).strip()
 
-    # 4) Угадываем по паттернам
     if not type_name:
         for pattern, label in _TYPE_PATTERNS:
             if pattern.search(summary):
@@ -338,22 +297,15 @@ _GROUP_IN_DESC_RE = re.compile(
 _GROUP_NAME_RE = re.compile(r'[А-Яа-яЁёA-Za-z]{2,5}/[а-яa-z]?-?\d{2}-\d-о[\w\-]*')
 
 def _extract_groups(description: str, summary: str) -> list:
-    """Ищет упоминания групп в DESCRIPTION и SUMMARY.
-
-    Группы СевГУ имеют вид: "ПИН/б-24-1-о", "ИВТ/б-24-2-о", "АСп/с-25-1-о".
-    """
     text = (description or '') + '\n' + (summary or '')
 
-    # 1) Явная метка "Группа: X, Y"
     m = _GROUP_IN_DESC_RE.search(text)
     if m:
         raw = m.group(1).strip()
         parts = re.split(r'[,;]', raw)
         return [p.strip() for p in parts if p.strip()]
 
-    # 2) Просто ищем паттерн группы в тексте
     found = _GROUP_NAME_RE.findall(text)
-    # Уникализируем, сохраняя порядок
     seen = set()
     result = []
     for g in found:
