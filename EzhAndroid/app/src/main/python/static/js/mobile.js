@@ -44,7 +44,6 @@
         }
     };
 
-    // На мобилке ВСЕГДА показываем только компактную шапку
     window.checkOnboarding = function() {
         if (!isMobile()) return;
         var savedGroup = localStorage.getItem('savedGroup');
