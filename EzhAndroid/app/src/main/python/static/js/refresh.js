@@ -13,28 +13,27 @@ async function manualRefresh() {
         return;
     }
 
-    const btn  = document.getElementById('refreshBtn');
-    const icon = document.getElementById('refreshIcon');
+    // В разметке у обеих кнопок (мобильная + десктопная) нет стабильных id —
+    // находим их по onclick и блокируем все сразу. Иконку не крутим —
+    // спиннер живёт в лоадере.
+    const refreshButtons = Array.from(
+        document.querySelectorAll('button[onclick*="manualRefresh"]')
+    );
 
     console.log('[refresh] START group=%s subgroup=%s', group, subgroup);
 
     _refreshInFlight = true;
     showGlobalLoader(`🔄 Обновляем «${group}» с СевГУ...`);
-    if (btn)  btn.disabled = true;
-    if (icon) icon.classList.add('refresh-spinning');
+    refreshButtons.forEach(b => { b.disabled = true; });
 
     try {
         // --- 1. Форсим sync с сервера ---
         setLoaderText('📡 Запрашиваем расписание (может занять 5–15 сек)...');
         const fresh = await apiSyncScheduleForce(group, subgroup);
-        console.log('[refresh] sync response:',
-                    Array.isArray(fresh) ? `${fresh.length} items` : typeof fresh);
 
         if (Array.isArray(fresh) && fresh.length > 0) {
             cachedSchedule = applyTimeFix(fresh);
-            if (typeof saveSyncTime === 'function') {
-                saveSyncTime(group, subgroup);
-            }
+            if (typeof saveSyncTime === 'function') saveSyncTime(group, subgroup);
         } else {
             setLoaderText('📦 Загружаем из локального кэша...');
             const fallback = await apiLoadSchedule(group, subgroup);
@@ -55,7 +54,7 @@ async function manualRefresh() {
         await updateLabsCache();
         await refreshTaskDates();
 
-        // --- 4. Друзья в фоне (форс) ---
+        // --- 4. Друзья в фоне ---
         if (typeof syncFriendsSchedules === 'function') {
             syncFriendsSchedules(true).catch(e => console.error('[refresh] friends sync failed', e));
         }
@@ -66,13 +65,11 @@ async function manualRefresh() {
         try { renderCharts(); } catch (e) { console.error('[refresh] renderCharts failed', e); }
         updateScheduleStatus();
         refreshNotifications();
-        // >>> обновляем нативные уведомления под новое расписание
         if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
         if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
 
         const count = Array.isArray(cachedSchedule) ? cachedSchedule.length : 0;
         showUpdateNotification(`✅ Расписание обновлено (${count} пар)`);
-        console.log('[refresh] OK, %d pairs', count);
 
     } catch (e) {
         console.error('[refresh] ERROR:', e);
@@ -85,9 +82,9 @@ async function manualRefresh() {
         const status = (e && e.status) || statusFromMsg;
 
         if (status === 429) {
-            msg = '⏳ Слишком часто. Расписание можно обновлять не чаще 10 раз в минуту — подождите немного и попробуйте снова';
+            msg = '⏳ Слишком часто. Подождите немного и попробуйте снова';
         } else if (status === 500) {
-            msg = '❌ Сервер не справился с запросом (ошибка 500). Попробуйте позже';
+            msg = '❌ Сервер не справился с запросом (ошибка 500)';
         } else if (status === 502 || status === 503 || status === 504) {
             msg = '🌐 Сервер СевГУ недоступен. Попробуйте позже';
         } else if (status) {
@@ -99,9 +96,7 @@ async function manualRefresh() {
 
     } finally {
         hideGlobalLoader();
-        if (btn)  btn.disabled = false;
-        if (icon) icon.classList.remove('refresh-spinning');
+        refreshButtons.forEach(b => { b.disabled = false; });
         _refreshInFlight = false;
-        console.log('[refresh] DONE');
     }
 }
