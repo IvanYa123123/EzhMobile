@@ -1,3 +1,4 @@
+import time
 import requests
 import urllib3
 import certifi
@@ -72,7 +73,9 @@ class SevSUPlanner:
     def get_schedule_for_week(self, group_name: str, week: int) -> list:
         params = {"v": "6.2", "section": "0", "group": group_name, "week": week}
         try:
-            response = self.session.get(self.api_url, params=params, timeout=20)
+            # Таймаут уменьшен с 20 до 12 секунд: 25 недель × 20с = 8 минут
+            # ожидания в худшем случае. С общим бюджетом (ниже) этого хватает.
+            response = self.session.get(self.api_url, params=params, timeout=12)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("ok"):
@@ -81,11 +84,17 @@ class SevSUPlanner:
             print(f"Schedule fetch error week {week}: {e}")
         return []
 
-    def _fetch_weeks_sequential(self, group_name: str, weeks) -> dict:
-        """Последовательная загрузка. Параллельные потоки в Chaquopy/Android
-        нестабильны — по коммиту 10f4015."""
+    def _fetch_weeks_sequential(self, group_name: str, weeks, budget_sec: float = 60.0) -> dict:
+        """Последовательная загрузка с общим бюджетом времени.
+        Параллельные потоки в Chaquopy/Android нестабильны (коммит 10f4015),
+        но 25 запросов × 20с могут висеть до 8 минут без общего таймаута.
+        Ставим бюджет 60с: дальше — используем то, что успели получить."""
         results = {}
+        t0 = time.monotonic()
         for w in weeks:
+            if time.monotonic() - t0 > budget_sec:
+                print(f"[planner] timeout budget exhausted at week {w}", flush=True)
+                break
             results[w] = self.get_schedule_for_week(group_name, w)
         return results
 
