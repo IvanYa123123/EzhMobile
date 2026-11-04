@@ -75,14 +75,19 @@ function moveTeacherDown() {
 
 // ============================================================
 //  INIT
+// ------------------------------------------------------------
+//  Раньше здесь висели 900 мс «на всякий случай», чтобы не
+//  конкурировать с fetchSemesterData. На практике это лишь
+//  магия: initTeachers асинхронный (fetchTrackedTeachers не
+//  зависит от расписания), а подсказки по ФИО строятся уже
+//  при открытии модалки — к этому моменту cachedSchedule
+//  гарантированно загружен. Запускаем сразу.
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        if (_teacherInitDone) return;
-        _teacherInitDone = true;
-        initTeachers();
-    }, 900);
+    if (_teacherInitDone) return;
+    _teacherInitDone = true;
+    initTeachers();
 });
 
 async function initTeachers() {
