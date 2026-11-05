@@ -172,7 +172,11 @@ class SevSUTeacherPlanner:
         if not schedule:
             return None
 
-        age = 0.0
+        # FIX (medium): если .meta.json отсутствует или повреждён,
+        # age раньше оставался 0.0 — и кэш навсегда считался «свежим»,
+        # расписание преподавателя никогда не обновлялось само.
+        # Теперь при отсутствии меты считаем кэш сколь угодно старым.
+        age = float('inf')
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:
                 meta = json.load(f)
