@@ -133,6 +133,19 @@ _FORBIDDEN = str.maketrans({'/': '_', '\\': '_', ':': '_', '*': '_', '?': '_',
 def make_safe_filename(name):
     return str(name).translate(_FORBIDDEN).replace('..', '__').strip('. ')[:120]
 
+def _schedule_cache_path(group, subgroup):
+    """Путь к файлу кэша расписания.
+
+    FIX (medium): make_safe_filename заменяет '/' на '_', а группа
+    с литеральным '_' (например, ИВТ_б-24-1-о) давала бы тот же
+    самый файл, что и группа с '/' (ИВТ/б-24-1-о) — коллизия и
+    взаимное затирание кэшей. Добавляем 16 hex-символов md5,
+    чтобы разные пары (group, subgroup) никогда не пересекались.
+    """
+    safe = make_safe_filename(group)
+    digest = hashlib.md5(f"{group}\x00{subgroup}".encode('utf-8')).hexdigest()[:16]
+    return os.path.join(SCHEDULES_DIR, f"{safe}_{subgroup}_{digest}.json")
+
 # ============================================================
 #  ТРОТТЛИНГ СИНХРОНИЗАЦИИ
 # ============================================================
@@ -186,7 +199,15 @@ _sync_times_cache = _MtimeJsonCache(SYNC_TIMES_FILE)
 
 def _needs_sync(key):
     data = _sync_times_cache.read(default_factory=dict)
-    last = data.get(key, 0) if isinstance(data, dict) else 0
+    if not isinstance(data, dict):
+        return True
+    last = data.get(key, 0)
+    # FIX (minor): раньше time.time() - "abc" падал TypeError → 500,
+    # если .sync_times.json кто-то поправил руками. Приводим к float.
+    try:
+        last = float(last)
+    except (TypeError, ValueError):
+        last = 0.0
     return (time.time() - last) > MIN_SYNC_INTERVAL
 
 def _mark_synced(key):
@@ -736,7 +757,16 @@ def update_lab_item(item_id):
                        (item_id,)).fetchone()
     if not row:
         return jsonify({"error": "not found"}), 404
-    new_title = str(data.get('title', row["title"])).strip()[:200] or row["title"]
+
+    # FIX (medium): раньше str(None) == "None" уезжало в title.
+    # data.get('title', default) возвращает None, если ключ есть
+    # со значением null. Обрабатываем явно.
+    raw_title = data.get('title')
+    if raw_title is None:
+        new_title = row["title"]
+    else:
+        new_title = str(raw_title).strip()[:200] or row["title"]
+
     try:
         new_comp = 1 if int(data.get('completed', row["completed"])) else 0
     except (TypeError, ValueError):
@@ -788,8 +818,7 @@ def get_schedule_all():
     except ValueError:
         return jsonify([])
     subgroup = validate_subgroup(request.args.get('subgroup', '0'))
-    cache_file = os.path.join(SCHEDULES_DIR,
-                              f"{make_safe_filename(group)}_{subgroup}.json")
+    cache_file = _schedule_cache_path(group, subgroup)
 
     # 1) Сначала кэш — самый быстрый путь.
     if os.path.exists(cache_file):
@@ -831,8 +860,7 @@ def sync_schedule():
     if not force and not _needs_sync(sync_key):
         return jsonify([])
 
-    cache_file = os.path.join(SCHEDULES_DIR,
-                              f"{make_safe_filename(group)}_{subgroup}.json")
+    cache_file = _schedule_cache_path(group, subgroup)
 
     try:
         schedule, exhausted = planner.get_semester_schedule(group, subgroup)
@@ -873,8 +901,7 @@ def export_ics():
     except ValueError:
         return jsonify({"error": "invalid group"}), 400
     subgroup = validate_subgroup(request.args.get('subgroup', '0'))
-    cache_file = os.path.join(SCHEDULES_DIR,
-                              f"{make_safe_filename(group)}_{subgroup}.json")
+    cache_file = _schedule_cache_path(group, subgroup)
     if not os.path.exists(cache_file):
         return Response(
             "Расписание ещё не загружено. Откройте группу в календаре, затем скачивайте .ics.",
@@ -905,7 +932,13 @@ def export_ics():
             dt_end = datetime.strptime(f"{date_str} {end_time}", "%Y-%m-%d %H:%M")
         except ValueError:
             continue
-        uid = hashlib.md5(f"{group}_{date_str}_{item.get('n','')}_{lesson}".encode()).hexdigest()[:16]
+        # FIX (medium): добавили subgroup в UID. Без него при
+        # subgroup="0" (все подгруппы) две пары с одинаковыми date/n/lesson,
+        # но разными subgroup давали одинаковый UID — календари
+        # оставляли только один VEVENT.
+        uid = hashlib.md5(
+            f"{group}_{date_str}_{item.get('n','')}_{item.get('subgroup','')}_{lesson}".encode()
+        ).hexdigest()[:16]
         summary = lesson + (f" ({type_name})" if type_name else "")
         desc_parts = []
         if teacher:
