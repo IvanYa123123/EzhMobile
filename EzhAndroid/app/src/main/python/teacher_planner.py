@@ -38,9 +38,6 @@ class SevSUTeacherPlanner:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
-        # Симметрично planner.py — проверка сертификата включена.
-        # Раньше здесь стояло verify=False, что давало MITM-окно на
-        # HTTPS-запросах расписаний преподавателей.
         self.session.trust_env = False
         self.session.verify = certifi.where()
 
@@ -172,16 +169,28 @@ class SevSUTeacherPlanner:
         if not schedule:
             return None
 
-        # FIX (medium): если .meta.json отсутствует или повреждён,
-        # age раньше оставался 0.0 — и кэш навсегда считался «свежим»,
-        # расписание преподавателя никогда не обновлялось само.
-        # Теперь при отсутствии меты считаем кэш сколь угодно старым.
+        # FIX (previous review): отсутствие .meta.json → age = inf,
+        # иначе кэш «вечно свежий».
+        # FIX (#9, medium): если updated_at в .meta.json — не число
+        # (строка/None), то time.time() - "abc" бросал TypeError,
+        # который except (OSError, JSONDecodeError) НЕ ловил —
+        # исключение пролетало вверх и get_teacher_schedule
+        # возвращал пусто на каждый запрос. Теперь коэрцируем к float
+        # и ловим TypeError отдельно.
         age = float('inf')
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:
                 meta = json.load(f)
-                age = time.time() - meta.get('updated_at', 0)
+            raw_ts = meta.get('updated_at', 0)
+            try:
+                ts = float(raw_ts)
+            except (TypeError, ValueError):
+                ts = 0.0
+            age = time.time() - ts
         except (OSError, json.JSONDecodeError):
+            pass
+        except TypeError:
+            # meta не dict (например, list/scalar) — тоже считаем «старым».
             pass
 
         return {'schedule': schedule, 'age': age}
@@ -247,9 +256,14 @@ class SevSUTeacherPlanner:
             try:
                 with open(meta_path, 'r', encoding='utf-8') as f:
                     meta = json.load(f)
-                if now - meta.get('updated_at', 0) > TEACHER_SCHEDULE_TTL:
+                raw_ts = meta.get('updated_at', 0)
+                try:
+                    ts = float(raw_ts)
+                except (TypeError, ValueError):
+                    ts = 0.0
+                if now - ts > TEACHER_SCHEDULE_TTL:
                     stale.append(slug)
-            except (OSError, json.JSONDecodeError):
+            except (OSError, json.JSONDecodeError, TypeError):
                 stale.append(slug)
 
         if not stale:
