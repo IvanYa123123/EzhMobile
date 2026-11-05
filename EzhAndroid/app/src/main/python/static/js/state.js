@@ -1,3 +1,10 @@
+// FIX (#1, critical): в mobile.js и calendar.js используется
+// window.expandedDayDateStr, а здесь была `let`. `let` в классическом
+// скрипте НЕ создаёт свойство на window — это два разных слота.
+// Теперь `var` → window.expandedDayDateStr === expandedDayDateStr.
+// Один и тот же слот, обе записи работают.
+var expandedDayDateStr = null;
+
 let currentBaseDate = new Date();
 currentBaseDate.setDate(currentBaseDate.getDate() - (currentBaseDate.getDay() === 0 ? 6 : currentBaseDate.getDay() - 1));
 
@@ -12,15 +19,31 @@ let validGroups = new Set();
 let allGroups = [];
 let groupsLoaded = false;
 
+// FIX (#4): безопасный JSON.parse. Если в localStorage лежит мусор
+// (старый формат, ручная правка), прежний код падал с SyntaxError
+// на этапе загрузки скрипта — и всё нижеследующее (state.js, main.js)
+// шло лесом.
+function _safeParse(raw, fallback) {
+    if (raw == null) return fallback;
+    try {
+        const v = JSON.parse(raw);
+        return v == null ? fallback : v;
+    } catch (e) {
+        return fallback;
+    }
+}
+
 let friendsList = [];
 let friendsSchedules = {};
-let visibleFriends = new Set(JSON.parse(localStorage.getItem('visibleFriends') || '[]'));
 let draggingFriendId = null;
 let editingFriendId = null;
 let draggingDropdownFriendId = null;
-let customCategories = JSON.parse(localStorage.getItem('customCategories') || '[]');
+// FIX (#11): visibleFriends / saveVisibleFriends были объявлены,
+// но нигде не читались — дед-код, убран. customCategories — используется,
+// оставляем с безопасным парсингом.
+let customCategories = _safeParse(localStorage.getItem('customCategories'), []);
+if (!Array.isArray(customCategories)) customCategories = [];
 
-let expandedDayDateStr = null;
 let customScheduleItems = [];
 
 let showTeacher  = localStorage.getItem('showTeacher')  !== 'false';
@@ -60,15 +83,12 @@ let taskDatesSet = new Set();
 
 let loaderInterval = null;
 
-function saveVisibleFriends() {
-    localStorage.setItem('visibleFriends', JSON.stringify([...visibleFriends]));
-}
-
 let showWidgetMiniCal = localStorage.getItem('showWidgetMiniCal') !== 'false';
 let showWidgetGlobal  = localStorage.getItem('showWidgetGlobal')  !== 'false';
 let showWidgetLabs    = localStorage.getItem('showWidgetLabs')    !== 'false';
 let showWidgetPacing  = localStorage.getItem('showWidgetPacing')  !== 'false';
-let showWidgetNotes   = localStorage.getItem('showWidgetNotes')   !== 'false';
+// FIX (#11): showWidgetNotes заменена на showWidgetNotes1/2/3, старая
+// переменная нигде не читалась — удалена.
 
 // Флаги для виджетов, чьи JS-файлы не входят в базовую сборку.
 let showWidgetSuggestions = localStorage.getItem('showWidgetSuggestions') !== 'false';
@@ -91,10 +111,6 @@ function applyFriendsTeachersVisibility() {
     if (btnFriends)  btnFriends.checked  = isFriends;
     if (btnTeachers) btnTeachers.checked = !isFriends;
 
-    // Bootstrap btn-check стилизует label через «:checked + .btn»,
-    // поэтому .active нужен на label, а не на input. Раньше класс
-    // вешали на input — семантически неверно (хоть визуально и не
-    // влияло, т.к. стилизация шла через :checked +).
     const labelFriends  = document.querySelector('label[for="btnTabFriends"]');
     const labelTeachers = document.querySelector('label[for="btnTabTeachers"]');
     if (labelFriends)  labelFriends.classList.toggle('active',  isFriends);
@@ -162,7 +178,7 @@ function handleSemesterDrop(e, target) {
 }
 
 // ============================================================
-//  SYNC TIMES  (когда последний раз реально получали данные с сервера)
+//  SYNC TIMES
 // ============================================================
 
 function loadSyncTimes() {
@@ -244,65 +260,13 @@ function onNotesWidgetInput(el) {
 }
 
 // ============================================================
-//  ВЕРТИКАЛЬНЫЙ РЕЖИМ: ДЕНЬ
+//  FIX (#11): _getVerticalDate / _setVerticalDate /
+//  verticalDayPrev / verticalDayNext / _rerenderSections
+//  удалены — они нигде не вызывались. _verticalDayOffset оставлен:
+//  weeks.js (jumpToWeek/goToToday/changeWeek) сбрасывает его в null.
 // ============================================================
 
 let _verticalDayOffset = null;
-
-function _getVerticalDate() {
-    if (expandedDayDateStr) {
-        const [y, m, d] = expandedDayDateStr.split('-').map(Number);
-        return new Date(y, m - 1, d);
-    }
-    if (_verticalDayOffset !== null) {
-        const d = new Date(currentBaseDate);
-        d.setDate(d.getDate() + _verticalDayOffset);
-        d.setHours(0, 0, 0, 0);
-        return d;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const base = new Date(currentBaseDate);
-    base.setHours(0, 0, 0, 0);
-    const diff = Math.round((today - base) / 86400000);
-    if (diff >= 0 && diff <= 6) return today;
-    return base;
-}
-
-function _setVerticalDate(date) {
-    const base = new Date(currentBaseDate);
-    base.setHours(0, 0, 0, 0);
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    _verticalDayOffset = Math.round((d - base) / 86400000);
-}
-
-function verticalDayPrev() {
-    if (expandedDayDateStr) {
-        if (typeof _navigateDay === 'function') _navigateDay(-1);
-        return;
-    }
-    const cur = _getVerticalDate();
-    cur.setDate(cur.getDate() - 1);
-    _setVerticalDate(cur);
-    _rerenderSections();
-}
-
-function verticalDayNext() {
-    if (expandedDayDateStr) {
-        if (typeof _navigateDay === 'function') _navigateDay(1);
-        return;
-    }
-    const cur = _getVerticalDate();
-    cur.setDate(cur.getDate() + 1);
-    _setVerticalDate(cur);
-    _rerenderSections();
-}
-
-function _rerenderSections() {
-    if (typeof renderFriendsCalendar === 'function') renderFriendsCalendar();
-    if (typeof renderTeachersCalendars === 'function') renderTeachersCalendars();
-}
 
 // ============================================================
 //  МИНИ-КАЛЕНДАРЬ: ПАНЕЛЬ СОБЫТИЙ
@@ -417,15 +381,12 @@ function _renderMiniCalRow(item) {
 }
 
 // ============================================================
-//  DRAG & DROP ВИДЖЕТОВ (Pointer Events + SVG-ёжик)
+//  DRAG & DROP ВИДЖЕТОВ
 // ============================================================
 
-// FIX (critical): в index.html виджеты лежат в #desktopRightWidgetsZone,
-// а не в #rightWidgetsZone. Раньше первая зона не была зарегистрирована
-// и pointerdown-слушатель на ручки ⋮⋮ в сайдбаре не вешался — drag
-// на десктопе был полностью мёртв.
-// #rightWidgetsZone оставлен: под него mobile.js в будущем может
-// клонировать карточки, плюс он упоминается в fixes.css.
+// FIX (previous review, critical): в index.html виджеты лежат в
+// #desktopRightWidgetsZone, а не в #rightWidgetsZone. Без этого
+// первая зона не была зарегистрирована и drag на десктопе был мёртв.
 const _widgetZoneIds = [
     'desktopRightWidgetsZone',
     'rightWidgetsZone',
@@ -456,9 +417,6 @@ const _DRAG_HEDGEHOG_SIZE = 64;
 
 let _hedgehogSvgMarkup = '';
 
-// Inline-fallback на случай, если /static/img/hedgehog.svg недоступен
-// (файл не коммитится — раньше fetch падал с 404, drag всегда рисовал
-// голый эмодзи 🦔 и в консоли копились warning'и).
 const _HEDGEHOG_INLINE_SVG =
     '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">'
   + '<path fill="#6b3f1a" d="M20 55 L28 30 L36 48 L44 25 L52 45 L60 22 L68 44 L76 28 L82 52 Z"/>'
@@ -511,11 +469,8 @@ function initWidgetDragAndDrop() {
 }
 
 function _preloadHedgehogSvg() {
-    // Сразу ставим inline-SVG, чтобы drag-and-drop выглядел нормально
-    // даже без файла /static/img/hedgehog.svg.
     _hedgehogSvgMarkup = _HEDGEHOG_INLINE_SVG;
 
-    // Если файл всё-таки есть в APK — подменим на него (богаче анимации).
     fetch(_DRAG_HEDGEHOG_URL)
         .then(r => {
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -526,9 +481,7 @@ function _preloadHedgehogSvg() {
                 _hedgehogSvgMarkup = text;
             }
         })
-        .catch(() => {
-            // Тихо: inline-версия уже стоит, шум в консоли не нужен.
-        });
+        .catch(() => {});
 }
 
 function _widgetZoneSelector() {
