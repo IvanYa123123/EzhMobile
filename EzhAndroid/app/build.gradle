@@ -64,6 +64,13 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    // MainActivity берёт версию из BuildConfig.VERSION_NAME для User-Agent.
+    // В AGP 8.x генерация BuildConfig по умолчанию выключена (`cannot find
+    // symbol: class BuildConfig`), поэтому включаем её явно.
+    buildFeatures {
+        buildConfig = true
+    }
+
     lint {
         // assembleDebug/Release lint не запускают, но `./gradlew build` — да.
         // Не валим сборку на косметике (например, на отсутствии PNG-иконок
