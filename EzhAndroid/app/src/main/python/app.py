@@ -54,6 +54,18 @@ def _to_int(v, default=0):
     except (TypeError, ValueError):
         return default
 
+# FIX (#3, critical): безопасное приведение к строке. Раньше паттерн
+# (data.get('x') or '').strip() давал 500 на не-строковом поле:
+# 123 or '' → 123, 123.strip() → AttributeError. Теперь _s(None) = '',
+# _s(123) = '123', _s('  abc  ') = 'abc'.
+def _s(v, default=''):
+    if v is None:
+        return default
+    try:
+        return str(v).strip()
+    except Exception:
+        return default
+
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static')
 planner = SevSUPlanner()
 teacher_planner = SevSUTeacherPlanner(BASE_DIR)
@@ -136,11 +148,10 @@ def make_safe_filename(name):
 def _schedule_cache_path(group, subgroup):
     """Путь к файлу кэша расписания.
 
-    FIX (medium): make_safe_filename заменяет '/' на '_', а группа
-    с литеральным '_' (например, ИВТ_б-24-1-о) давала бы тот же
-    самый файл, что и группа с '/' (ИВТ/б-24-1-о) — коллизия и
-    взаимное затирание кэшей. Добавляем 16 hex-символов md5,
-    чтобы разные пары (group, subgroup) никогда не пересекались.
+    make_safe_filename заменяет '/' на '_', а группа с литеральным '_'
+    (например, ИВТ_б-24-1-о) давала бы тот же файл, что и группа с '/'
+    (ИВТ/б-24-1-о) — коллизия. 16 hex-символов md5 гарантируют
+    уникальность файла для любой пары (group, subgroup).
     """
     safe = make_safe_filename(group)
     digest = hashlib.md5(f"{group}\x00{subgroup}".encode('utf-8')).hexdigest()[:16]
@@ -202,8 +213,6 @@ def _needs_sync(key):
     if not isinstance(data, dict):
         return True
     last = data.get(key, 0)
-    # FIX (minor): раньше time.time() - "abc" падал TypeError → 500,
-    # если .sync_times.json кто-то поправил руками. Приводим к float.
     try:
         last = float(last)
     except (TypeError, ValueError):
@@ -230,11 +239,11 @@ _TIME_RANGE_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d - ([01]\d|2[0-3]):[0-5]\d
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 def validate_subgroup(raw):
-    s = str(raw if raw is not None else "0").strip()
+    s = _s(raw, "0")
     return s if s in _VALID_SUBGROUPS else "0"
 
 def validate_group(raw):
-    s = str(raw or "").strip()
+    s = _s(raw)
     if not s:
         raise ValueError("group required")
     if len(s) > 64:
@@ -244,7 +253,7 @@ def validate_group(raw):
     return s
 
 def _validate_base_date(raw):
-    s = str(raw or "").strip()
+    s = _s(raw)
     if not _DATE_RE.match(s):
         return None
     try:
@@ -254,7 +263,7 @@ def _validate_base_date(raw):
         return None
 
 def _validate_time_range(raw):
-    s = str(raw or "").strip()
+    s = _s(raw)
     return s if _TIME_RANGE_RE.match(s) else None
 
 # ============================================================
@@ -334,7 +343,7 @@ def get_groups():
 @limiter.limit("30 per minute")
 def add_custom_group():
     data = request.get_json(silent=True) or {}
-    name = (data.get('name') or '').strip()
+    name = _s(data.get('name'))
     if not name:
         return jsonify({"error": "empty"}), 400
     try:
@@ -359,9 +368,9 @@ def manage_tasks():
     conn = get_db()
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        date = (data.get('date') or '').strip()
-        text = (data.get('text') or '').strip()
-        status = (data.get('status') or 'green').strip()
+        date = _s(data.get('date'))
+        text = _s(data.get('text'))
+        status = _s(data.get('status'), 'green') or 'green'
         if not date or not text:
             return jsonify({"error": "required"}), 400
         if len(text) > 2000:
@@ -386,9 +395,9 @@ def update_task(task_id):
     conn = get_db()
     if request.method == "PUT":
         data = request.get_json(silent=True) or {}
-        date = (data.get('date') or '').strip()
-        text = (data.get('text') or '').strip()
-        status = (data.get('status') or 'green').strip()
+        date = _s(data.get('date'))
+        text = _s(data.get('text'))
+        status = _s(data.get('status'), 'green') or 'green'
         if not date or not text:
             return jsonify({"error": "required"}), 400
         if len(text) > 2000:
@@ -582,7 +591,7 @@ def _restore_backup(conn):
             cleaned = []
             for name in groups[:500]:
                 try:
-                    cleaned.append(validate_group(str(name)))
+                    cleaned.append(validate_group(_s(name)))
                 except ValueError:
                     continue
             if not save_custom_groups(cleaned):
@@ -617,7 +626,8 @@ def manage_labs():
         for item in items:
             if not isinstance(item, dict):
                 continue
-            group, subject = item.get('group'), item.get('subject')
+            group = _s(item.get('group'))
+            subject = _s(item.get('subject'))
             if not group or not subject:
                 continue
             try:
@@ -632,7 +642,7 @@ def manage_labs():
                 (group, subject, comp, tot))
         conn.commit()
         return jsonify({"success": True})
-    group = request.args.get('group')
+    group = _s(request.args.get('group'))
     if not group:
         return jsonify({})
     return jsonify({
@@ -657,7 +667,7 @@ def _recalc_lab_progress(conn, group, subject):
 @app.route("/api/lab_items", methods=["GET"])
 @limiter.limit("240 per minute")
 def get_lab_items():
-    group = (request.args.get('group') or '').strip()
+    group = _s(request.args.get('group'))
     if not group:
         return jsonify({})
     grouped = {}
@@ -674,7 +684,10 @@ def get_lab_items():
 @limiter.limit("120 per minute")
 def sync_lab_items():
     data = request.get_json(silent=True) or {}
-    group, items = data.get('group'), data.get('items')
+    # FIX (#8): group теперь всегда строка через _s(). Раньше group=123
+    # проходил not-group проверку (123 truthy) и уезжал в SQL как int.
+    group = _s(data.get('group'))
+    items = data.get('items')
     if not group or not isinstance(items, list):
         return jsonify({"error": "required"}), 400
     conn = get_db()
@@ -682,7 +695,7 @@ def sync_lab_items():
     for spec in items:
         if not isinstance(spec, dict):
             continue
-        subject = spec.get('subject')
+        subject = _s(spec.get('subject'))
         try:
             count = int(spec.get('count') or 0)
         except (TypeError, ValueError):
@@ -709,7 +722,8 @@ def sync_lab_items():
 @limiter.limit("120 per minute")
 def add_lab_item():
     data = request.get_json(silent=True) or {}
-    group, subject = data.get('group'), data.get('subject')
+    group = _s(data.get('group'))
+    subject = _s(data.get('subject'))
     if not group or not subject:
         return jsonify({"error": "required"}), 400
     conn = get_db()
@@ -728,7 +742,8 @@ def add_lab_item():
 @limiter.limit("120 per minute")
 def remove_last_lab_item():
     data = request.get_json(silent=True) or {}
-    group, subject = data.get('group'), data.get('subject')
+    group = _s(data.get('group'))
+    subject = _s(data.get('subject'))
     row = get_db().execute(
         "SELECT id FROM lab_items WHERE group_name=? AND subject=? ORDER BY idx DESC LIMIT 1",
         (group, subject)).fetchone()
@@ -758,9 +773,8 @@ def update_lab_item(item_id):
     if not row:
         return jsonify({"error": "not found"}), 404
 
-    # FIX (medium): раньше str(None) == "None" уезжало в title.
-    # data.get('title', default) возвращает None, если ключ есть
-    # со значением null. Обрабатываем явно.
+    # str(None) == "None" уезжало в title, если клиент присылал
+    # {"title": null}. Обрабатываем явно: None → оставить старое.
     raw_title = data.get('title')
     if raw_title is None:
         new_title = row["title"]
@@ -793,7 +807,10 @@ def _save_schedule_cache(cache_file, schedule):
                 old = json.load(f)
         except (json.JSONDecodeError, OSError):
             old = None
-    if old and len(schedule) < len(old) * 0.9:
+    # FIX (#7, medium): если кэш повреждён и в нём лежит dict (а не list),
+    # то `for x in old` даёт ключи-строки, а x.get('date') — AttributeError.
+    # Проверяем isinstance явно.
+    if old and isinstance(old, list) and len(schedule) < len(old) * 0.9:
         old_max = max((str(x.get('date') or '') for x in old), default='')
         new_max = max((str(x.get('date') or '') for x in schedule), default='')
         if not (new_max and old_max and new_max < old_max):
@@ -820,7 +837,6 @@ def get_schedule_all():
     subgroup = validate_subgroup(request.args.get('subgroup', '0'))
     cache_file = _schedule_cache_path(group, subgroup)
 
-    # 1) Сначала кэш — самый быстрый путь.
     if os.path.exists(cache_file):
         try:
             with open(cache_file, 'r', encoding='utf-8') as f:
@@ -828,16 +844,12 @@ def get_schedule_all():
         except (json.JSONDecodeError, OSError):
             pass
 
-    # 2) Кэша нет — тянем с сервера СевГУ.
     try:
         schedule, exhausted = planner.get_semester_schedule(group, subgroup)
     except Exception as e:
         _safe_print(f"Error fetching schedule: {e}", flush=True)
         return jsonify([])
 
-    # 3) Сохраняем в кэш + помечаем синхронизированным, только если
-    # планер НЕ сообщил, что бюджет времени исчерпан. Иначе sync_schedule
-    # через 0.5 с сделает ту же работу второй раз (двойной запрос).
     if schedule:
         _save_schedule_cache(cache_file, schedule)
         if not exhausted:
@@ -866,15 +878,10 @@ def sync_schedule():
         schedule, exhausted = planner.get_semester_schedule(group, subgroup)
         if schedule:
             _save_schedule_cache(cache_file, schedule)
-            # Помечаем синхронизированным, только если планер не уведомил
-            # об исчерпании бюджета времени (иначе на следующем sync
-            # попробуем дотянуть оставшиеся недели).
             if not exhausted:
                 _mark_synced(sync_key)
             return jsonify(schedule)
 
-        # Пустой ответ — отдаём старый кэш, если есть, и НЕ помечаем
-        # синхронизацию успешной.
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -932,10 +939,6 @@ def export_ics():
             dt_end = datetime.strptime(f"{date_str} {end_time}", "%Y-%m-%d %H:%M")
         except ValueError:
             continue
-        # FIX (medium): добавили subgroup в UID. Без него при
-        # subgroup="0" (все подгруппы) две пары с одинаковыми date/n/lesson,
-        # но разными subgroup давали одинаковый UID — календари
-        # оставляли только один VEVENT.
         uid = hashlib.md5(
             f"{group}_{date_str}_{item.get('n','')}_{item.get('subgroup','')}_{lesson}".encode()
         ).hexdigest()[:16]
@@ -974,7 +977,7 @@ def export_ics():
 @app.route("/api/search")
 @limiter.limit("240 per minute")
 def search():
-    q = (request.args.get('q') or '').strip()
+    q = _s(request.args.get('q'))
     if len(q) < 2:
         return jsonify({"tasks": [], "events": [], "count": 0})
     if len(q) > 100:
@@ -1000,10 +1003,10 @@ def manage_friends():
     conn = get_db()
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        name = (data.get('name') or '').strip()
-        group_raw = (data.get('group') or '').strip()
+        name = _s(data.get('name'))
+        group_raw = _s(data.get('group'))
         subgroup = validate_subgroup(data.get('subgroup', '0'))
-        category = (data.get('category') or '').strip()
+        category = _s(data.get('category'))
         if not name or not group_raw:
             return jsonify({"error": "name and group required"}), 400
         if len(name) > 100 or len(category) > 100:
@@ -1028,10 +1031,10 @@ def update_or_delete_friend(friend_id):
     conn = get_db()
     if request.method == "PUT":
         data = request.get_json(silent=True) or {}
-        name = (data.get('name') or '').strip()
-        group_raw = (data.get('group') or '').strip()
+        name = _s(data.get('name'))
+        group_raw = _s(data.get('group'))
         subgroup = validate_subgroup(data.get('subgroup', '0'))
-        category = (data.get('category') or '').strip()
+        category = _s(data.get('category'))
         if not name or not group_raw:
             return jsonify({"error": "name and group required"}), 400
         if len(name) > 100 or len(category) > 100:
@@ -1059,19 +1062,19 @@ def manage_subjects():
     conn = get_db()
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        subject = (data.get('subject') or '').strip()
+        subject = _s(data.get('subject'))
         if not subject:
             return jsonify({"error": "subject required"}), 400
         if len(subject) > 200:
             return jsonify({"error": "subject too long"}), 400
-        link = (data.get('link', '') or '').strip()
+        link = _s(data.get('link'))
         if link and not _LINK_RE.match(link):
             link = ''
         conn.execute(
             "INSERT OR REPLACE INTO subject_settings (subject, custom_name, link, teacher, location) "
             "VALUES (?, ?, ?, ?, ?)",
-            (subject, data.get('custom_name', '') or '', link,
-             data.get('teacher', '') or '', data.get('location', '') or ''))
+            (subject, _s(data.get('custom_name')), link,
+             _s(data.get('teacher')), _s(data.get('location'))))
         conn.commit()
         return jsonify({"success": True})
     resp = jsonify({
@@ -1093,8 +1096,8 @@ def manage_custom_schedule():
     conn = get_db()
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        group_raw = (data.get('group') or '').strip()
-        lesson = (data.get('lesson') or '').strip()
+        group_raw = _s(data.get('group'))
+        lesson = _s(data.get('lesson'))
         if not group_raw or not lesson:
             return jsonify({"error": "required"}), 400
         if len(lesson) > 200:
@@ -1116,12 +1119,13 @@ def manage_custom_schedule():
             "type_name, teacher, location, is_event, recurrence, exceptions) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (group, base_date, time_range, lesson,
-             data.get('type_name', ''), data.get('teacher', ''),
-             data.get('location', ''), _to_int(data.get('is_event', 0)),
-             data.get('recurrence', 'none'), data.get('exceptions', '[]')))
+             _s(data.get('type_name')), _s(data.get('teacher')),
+             _s(data.get('location')), _to_int(data.get('is_event', 0)),
+             _s(data.get('recurrence')) or 'none',
+             _s(data.get('exceptions')) or '[]'))
         conn.commit()
         return jsonify({"id": cursor.lastrowid})
-    group = request.args.get('group')
+    group = _s(request.args.get('group'))
     if not group:
         return jsonify([])
     return jsonify([{
@@ -1138,7 +1142,7 @@ def update_custom_schedule(item_id):
     conn = get_db()
     if request.method == "PUT":
         data = request.get_json(silent=True) or {}
-        lesson = (data.get('lesson') or '').strip()
+        lesson = _s(data.get('lesson'))
         if not lesson:
             return jsonify({"error": "lesson required"}), 400
         if len(lesson) > 200:
@@ -1156,9 +1160,10 @@ def update_custom_schedule(item_id):
             "type_name=?, teacher=?, location=?, is_event=?, recurrence=?, exceptions=? "
             "WHERE id=?",
             (base_date, time_range, lesson,
-             data.get('type_name', ''), data.get('teacher', ''),
-             data.get('location', ''), _to_int(data.get('is_event', 0)),
-             data.get('recurrence', 'none'), data.get('exceptions', '[]'), item_id))
+             _s(data.get('type_name')), _s(data.get('teacher')),
+             _s(data.get('location')), _to_int(data.get('is_event', 0)),
+             _s(data.get('recurrence')) or 'none',
+             _s(data.get('exceptions')) or '[]', item_id))
         conn.commit()
         return jsonify({"success": True})
     conn.execute("DELETE FROM custom_schedule WHERE id=?", (item_id,))
@@ -1183,7 +1188,7 @@ def get_teachers():
 @app.route("/api/teacher_schedule")
 @limiter.limit("60 per minute")
 def get_teacher_schedule():
-    slug = (request.args.get('slug') or '').strip()
+    slug = _s(request.args.get('slug'))
     if not slug:
         return jsonify([])
     try:
@@ -1198,8 +1203,8 @@ def manage_tracked_teachers():
     conn = get_db()
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        name = (data.get('name') or '').strip()
-        slug = (data.get('slug') or '').strip().lower()
+        name = _s(data.get('name'))
+        slug = _s(data.get('slug')).lower()
         if not name or not slug:
             return jsonify({"error": "invalid data"}), 400
         if len(name) > 200 or len(slug) > 100:
