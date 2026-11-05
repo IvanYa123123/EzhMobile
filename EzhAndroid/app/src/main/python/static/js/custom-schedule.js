@@ -255,6 +255,11 @@ async function refreshCustomSchedule() {
     catch (e) { customScheduleItems = []; }
     renderCalendar();
     if (typeof refreshMiniCalEvents === 'function') refreshMiniCalEvents();
+    // FIX (medium): раньше кастомные события/напоминания не попадали
+    // в AlarmManager, пока пользователь не зайдёт в настройки или
+    // не перезагрузит приложение. Теперь пере-планируем сразу после
+    // любого изменения custom_schedule.
+    if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
 }
 
 // --- Настройки предметов ---
