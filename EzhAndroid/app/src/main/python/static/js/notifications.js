@@ -3,21 +3,67 @@
 // Android: нативный мост EzhNative (AlarmManager + NotificationReceiver).
 // Браузер: Web Notifications.
 //
-// scheduleAllNotifications() вызывается явно после загрузки расписания,
-// после ручного рефреша и при изменении настроек. refreshNotifications()
-// на Android оставлен для веб-пути — нативный планировщик он не трогает.
+// FIX (#5, medium): раньше _notifiedMap был только in-memory Map.
+// При перезагрузке страницы в web-режиме он пустел и _fireNotification
+// срабатывал повторно для всех пар/событий в окне [notifyMs, startMs).
+// Теперь карта персистится в localStorage и восстанавливается при init.
 
 let _notificationCheckInterval = null;
 let _notifiedMap = new Map();
 
-// Сигнатура последнего успешного планирования. Сравнивается в
-// visibilitychange, чтобы не перепланировать все будильники на 30 дней
-// при каждом возврате из фона.
+const NOTIFIED_MAP_STORAGE_KEY = 'ezhNotifiedMap';
+const NOTIFIED_MAP_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 let _lastScheduledSignature = '';
 
 const NOTIFICATION_CHECK_MS = 60 * 1000;
 const NOTIFICATION_MAX_LOOKAHEAD_DAYS = 56;
 const NATIVE_HORIZON_DAYS = 30;
+
+function _loadNotifiedMap() {
+    try {
+        const raw = localStorage.getItem(NOTIFIED_MAP_STORAGE_KEY);
+        if (!raw) return;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return;
+        const cutoff = Date.now() - NOTIFIED_MAP_TTL_MS;
+        for (const k in obj) {
+            const ts = obj[k];
+            if (typeof ts === 'number' && ts > cutoff) {
+                _notifiedMap.set(k, ts);
+            }
+        }
+    } catch (e) {
+        // Битый localStorage — просто стартуем с пустой картой.
+    }
+}
+
+function _persistNotifiedMap() {
+    try {
+        const obj = {};
+        _notifiedMap.forEach((v, k) => { obj[k] = v; });
+        localStorage.setItem(NOTIFIED_MAP_STORAGE_KEY, JSON.stringify(obj));
+    } catch (e) {}
+}
+
+function _markNotified(key, ts) {
+    _notifiedMap.set(key, ts);
+    _persistNotifiedMap();
+}
+
+function _pruneAndPersistNotifiedMap(nowMs) {
+    let changed = false;
+    for (const [k, ts] of _notifiedMap) {
+        if (nowMs - ts > NOTIFIED_MAP_TTL_MS) {
+            _notifiedMap.delete(k);
+            changed = true;
+        }
+    }
+    if (changed) _persistNotifiedMap();
+}
+
+// Загружаем сразу на старте — до первого refreshNotifications.
+_loadNotifiedMap();
 
 function _hasNativeBridge() {
     return typeof window.EzhNative !== 'undefined' && window.EzhNative !== null;
@@ -35,9 +81,6 @@ function _nativeCanExactAlarm() {
     catch (e) { return false; }
 }
 
-// Дешёвая подпись «что сейчас запланировано». Полного хэша расписания не
-// нужно: явные вызовы scheduleAllNotifications() приходят из sync/refresh/
-// settings, а здесь мы лишь отсеиваем «свернул-развернул» без изменений.
 function _notificationSignature() {
     return [
         Array.isArray(cachedSchedule) ? cachedSchedule.length : 0,
@@ -55,8 +98,6 @@ function initNotifications() {
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             refreshNotifications();
-            // Пересчитываем нативные алярмы только если настройки/объём
-            // расписания реально поменялись с прошлого планирования.
             if (_notificationSignature() !== _lastScheduledSignature) {
                 scheduleAllNotifications();
             }
@@ -102,10 +143,6 @@ function scheduleAllNotifications() {
                 const notifyMs = startMs - advanceMs;
                 if (notifyMs <= nowMs) return;
                 if (notifyMs > nowMs + horizonMs) return;
-                // Подгруппа в ID: две пары с одинаковыми date/n/lesson,
-                // но разными подгруппами (subgroup=0 в фильтре) раньше
-                // давали коллизию PendingIntent → одно уведомление
-                // терялось. Добавили pair.subgroup.
                 const id = `pair-${pair.date}-${pair.n || 0}-${pair.subgroup || 0}-${_slug(pair.lesson)}`;
                 let body = pair.lesson || 'Пара';
                 if (pair.location) body += ` — ${pair.location}`;
@@ -132,11 +169,6 @@ function scheduleAllNotifications() {
                     const notifyMs = startMs - advanceMs;
                     if (notifyMs <= nowMs) return;
                     if (notifyMs > nowMs + horizonMs) return;
-                    // custom_id уникален для строки custom_schedule;
-                    // для повторяющихся событий дата всё равно разная.
-                    // Раньше ID строился только из date+slug(lesson) —
-                    // два события с одинаковым названием в один день
-                    // давали коллизию.
                     const id = `event-${dateStr}-${ev.custom_id || _slug(ev.lesson)}`;
                     let body = ev.lesson || 'Событие';
                     if (ev.location) body += ` — ${ev.location}`;
@@ -153,12 +185,12 @@ function scheduleAllNotifications() {
 }
 
 // ============================================================
-//  ВЕБ-ПУТЬ (десктоп/браузер). На Android не используется.
+//  ВЕБ-ПУТЬ
 // ============================================================
 
 function refreshNotifications() {
     if (!notificationsEnabled) return;
-    if (_hasNativeBridge()) return;              // планируется нативно
+    if (_hasNativeBridge()) return;
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
 
@@ -168,10 +200,9 @@ function refreshNotifications() {
         advanceMs,
         NOTIFICATION_MAX_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
 
-    const CUTOFF = 30 * 24 * 60 * 60 * 1000;
-    for (const [k, ts] of _notifiedMap) {
-        if (nowMs - ts > CUTOFF) _notifiedMap.delete(k);
-    }
+    // FIX (#5): теперь чистим и сохраняем в localStorage одной функцией,
+    // чтобы переживало reload.
+    _pruneAndPersistNotifiedMap(nowMs);
 
     if (typeof cachedSchedule !== 'undefined' && Array.isArray(cachedSchedule)) {
         cachedSchedule.forEach(pair => {
@@ -183,7 +214,7 @@ function refreshNotifications() {
 
             const key = `pair|${pair.date}|${pair.n}|${pair.lesson}|${pair.time_range}`;
             if (_notifiedMap.has(key)) return;
-            _notifiedMap.set(key, nowMs);
+            _markNotified(key, nowMs);
 
             const advanceText = formatAdvanceText(notificationAdvance, notificationUnit);
             let body = pair.lesson || 'Пара';
@@ -216,7 +247,7 @@ function refreshNotifications() {
 
                 const key = `event|${dateStr}|${ev.lesson}|${ev.time_range}`;
                 if (_notifiedMap.has(key)) return;
-                _notifiedMap.set(key, nowMs);
+                _markNotified(key, nowMs);
 
                 const advanceText = formatAdvanceText(notificationAdvance, notificationUnit);
                 let body = ev.lesson || 'Событие';
