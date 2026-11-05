@@ -368,10 +368,12 @@ def manage_tasks():
     conn = get_db()
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        date = _s(data.get('date'))
+        date = _validate_base_date(data.get('date'))
         text = _s(data.get('text'))
         status = _s(data.get('status'), 'green') or 'green'
-        if not date or not text:
+        if date is None:
+            return jsonify({"error": "invalid date"}), 400
+        if not text:
             return jsonify({"error": "required"}), 400
         if len(text) > 2000:
             return jsonify({"error": "text too long"}), 400
@@ -395,10 +397,12 @@ def update_task(task_id):
     conn = get_db()
     if request.method == "PUT":
         data = request.get_json(silent=True) or {}
-        date = _s(data.get('date'))
+        date = _validate_base_date(data.get('date'))
         text = _s(data.get('text'))
         status = _s(data.get('status'), 'green') or 'green'
-        if not date or not text:
+        if date is None:
+            return jsonify({"error": "invalid date"}), 400
+        if not text:
             return jsonify({"error": "required"}), 400
         if len(text) > 2000:
             return jsonify({"error": "text too long"}), 400
@@ -564,6 +568,8 @@ def _restore_backup(conn):
         return jsonify({"success": False, "error": "no tables in backup"}), 400
 
     restored = {}
+    skipped_groups = 0
+    cleaned_groups = None
     try:
         for table, columns in _BACKUP_TABLES.items():
             rows = tables.get(table)
@@ -588,16 +594,26 @@ def _restore_backup(conn):
 
         groups = data.get('custom_groups')
         if isinstance(groups, list):
-            cleaned = []
+            cleaned_groups = []
+            seen = set()
             for name in groups[:500]:
                 try:
-                    cleaned.append(validate_group(_s(name)))
+                    cleaned = validate_group(_s(name))
                 except ValueError:
+                    # Имя не проходит валидацию — считаем и сообщаем клиенту,
+                    # а не выбрасываем молча.
+                    skipped_groups += 1
                     continue
-            if not save_custom_groups(cleaned):
-                raise RuntimeError("custom_groups save failed")
-            restored['custom_groups'] = len(cleaned)
+                if cleaned in seen:
+                    skipped_groups += 1
+                    continue
+                seen.add(cleaned)
+                cleaned_groups.append(cleaned)
 
+        # Сначала коммитим БД и только потом перезаписываем файл групп.
+        # Иначе при сбое коммита БД откатывалась, а custom_groups оставались
+        # уже подменёнными — рассинхрон, из-за которого «восстановленные»
+        # группы не совпадали с данными.
         conn.commit()
     except Exception as e:
         try:
@@ -606,6 +622,15 @@ def _restore_backup(conn):
             pass
         _safe_print(f"[backup] restore failed: {e}", flush=True)
         return jsonify({"success": False, "error": str(e)}), 500
+
+    if cleaned_groups is not None:
+        if not save_custom_groups(cleaned_groups):
+            _safe_print("[backup] restore: db ok, custom_groups save failed", flush=True)
+            return jsonify({"success": False, "error": "custom_groups save failed",
+                            "restored": restored}), 500
+        restored['custom_groups'] = len(cleaned_groups)
+        if skipped_groups:
+            restored['custom_groups_skipped'] = skipped_groups
 
     _safe_print(f"[backup] restore ok: {restored}", flush=True)
     return jsonify({"success": True, "restored": restored})

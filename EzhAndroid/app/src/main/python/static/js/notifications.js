@@ -123,9 +123,17 @@ function requestNotificationPermission() {
 // ============================================================
 
 function scheduleAllNotifications() {
-    if (!notificationsEnabled) return;
     if (!_hasNativeBridge()) return;
-    if (!_nativeHasPermission()) return;
+
+    // Выключение напоминаний (или отзыв разрешения в системе) должно снимать
+    // уже поставленные будильники. Раньше здесь стоял `return` ДО
+    // cancelAllNotifications(), поэтому AlarmManager продолжал будить
+    // пользователя и после того, как он выключил уведомления.
+    if (!notificationsEnabled || !_nativeHasPermission()) {
+        try { window.EzhNative.cancelAllNotifications(); } catch (e) {}
+        _lastScheduledSignature = _notificationSignature();
+        return;
+    }
 
     _lastScheduledSignature = _notificationSignature();
 

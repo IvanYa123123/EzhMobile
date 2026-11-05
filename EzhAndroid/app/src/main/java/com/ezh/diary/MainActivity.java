@@ -14,6 +14,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -88,7 +89,7 @@ public class MainActivity extends AppCompatActivity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setSupportMultipleWindows(false);
-        s.setUserAgentString(s.getUserAgentString() + " EzhAndroid/0.7");
+        s.setUserAgentString(s.getUserAgentString() + " EzhAndroid/" + BuildConfig.VERSION_NAME);
         webView.setBackgroundColor(Color.WHITE);
 
         bridge = new EzhBridge(this);
@@ -118,19 +119,40 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
 
-                // 404 на vendor-файлы — главная причина «белого экрана»
-                // по BUILD.md (bootstrap.min.css / chart.umd.min.js).
-                // Подсвечиваем в сплэше, чтобы пользователь сразу видел
-                // причину, а не смотрел на пустой календарь.
-                if (url.contains("/static/vendor/") || url.contains("bootstrap") || url.contains("chart")) {
-                    runOnUiThread(() -> {
-                        if (splashStatus != null && splashStatus.getVisibility() == View.VISIBLE) {
-                            splashStatus.setText(
-                                "Не загрузились vendor-ассеты (" + url + ").\n" +
-                                "Запустите scripts/fetch_vendor_assets.py и пересоберите APK.");
-                        }
-                    });
+                hintBrokenAsset(url, String.valueOf(error.getDescription()));
+            }
+
+            /**
+             * 404/500 от локального Flask приходит именно сюда: onReceivedError
+             * вызывается только на сетевые сбои, поэтому подсказка про
+             * vendor-ассеты раньше не срабатывала ни разу — как раз в случае
+             * «белого экрана», для которого она и писалась.
+             */
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            WebResourceResponse response) {
+                String url = request.getUrl() != null ? request.getUrl().toString() : "?";
+                int status = response != null ? response.getStatusCode() : -1;
+                Log.e(TAG, "WebView HTTP " + status + ": " + url);
+                if (status >= 400) {
+                    hintBrokenAsset(url, "HTTP " + status);
                 }
+            }
+
+            private void hintBrokenAsset(String url, String detail) {
+                if (url == null) return;
+                boolean broken = url.contains("/static/vendor/")
+                        || url.contains("bootstrap")
+                        || url.contains("chart")
+                        || url.contains("/static/fonts/");
+                if (!broken) return;
+                runOnUiThread(() -> {
+                    if (splashStatus != null && splashStatus.getVisibility() == View.VISIBLE) {
+                        splashStatus.setText(
+                            "Не загрузились vendor-ассеты (" + url + ", " + detail + ").\n" +
+                            "Запустите scripts/fetch_vendor_assets.py и пересоберите APK.");
+                    }
+                });
             }
 
             @Override

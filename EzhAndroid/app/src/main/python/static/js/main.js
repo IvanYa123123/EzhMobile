@@ -117,7 +117,11 @@ async function fetchSemesterData() {
             await apiAddCustomGroup(group);
             validGroups.add(group.toUpperCase());
             allGroups.push(group);
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            alert('Не удалось добавить группу «' + group + '» в базу: '
+                + ((e && e.message) ? e.message : 'неизвестная ошибка'));
+        }
         showGlobalLoader();
     }
 
@@ -131,9 +135,15 @@ async function fetchSemesterData() {
     try {
         let [data, customData] = await Promise.all([
             apiLoadSchedule(group, subgroup),
-            apiLoadCustomSchedule(group)
+            // Кастомные события не должны ронять загрузку семестра: если
+            // /api/custom_schedule отвечает ошибкой, показываем расписание
+            // без них, а не «Не удалось загрузить расписание».
+            apiLoadCustomSchedule(group).catch(e => {
+                console.error("custom schedule failed:", e);
+                return [];
+            })
         ]);
-        customScheduleItems = customData;
+        customScheduleItems = Array.isArray(customData) ? customData : [];
         cachedSchedule = applyTimeFix(data);
         await Promise.all([
             updateLabsCache(),
