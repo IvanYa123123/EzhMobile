@@ -331,6 +331,9 @@ function _saveTextFile(filename, mime, text) {
     showUpdateNotification('✅ Файл сохранён');
 }
 
+// FIX (medium): все сетевые вызовы ниже раньше шли через голый fetch()
+// без таймаута. Если Flask/СевГУ зависал — лоадер висел минутами до
+// TCP-таймаута ОС. Теперь используем _fetchWithTimeout из api.js (30 с).
 async function downloadICS() {
     const group    = (document.getElementById('groupSelect').value || '').trim();
     const subgroup = document.getElementById('subgroupSelect').value || '0';
@@ -340,7 +343,7 @@ async function downloadICS() {
     try {
         const url = `/api/schedule.ics?group=${encodeURIComponent(group)}` +
                     `&subgroup=${encodeURIComponent(subgroup)}`;
-        const resp = await fetch(url);
+        const resp = await _fetchWithTimeout(_api(url));
         if (!resp.ok) {
             if (resp.status === 409) {
                 let text = '';
@@ -376,7 +379,7 @@ async function downloadICS() {
 async function downloadTasksICS() {
     showGlobalLoader('📝 Готовим .ics с заметками...');
     try {
-        const resp = await fetch('/api/tasks.ics');
+        const resp = await _fetchWithTimeout(_api('/api/tasks.ics'));
         if (resp.status === 409) {
             let text = '';
             try { text = await resp.text(); } catch (e) {}
@@ -399,7 +402,7 @@ async function downloadTasksICS() {
 async function downloadBackup() {
     showGlobalLoader('💾 Собираем резервную копию...');
     try {
-        const resp = await fetch('/api/backup');
+        const resp = await _fetchWithTimeout(_api('/api/backup'));
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         const text = JSON.stringify(data, null, 2);
@@ -438,7 +441,7 @@ async function onBackupFilePicked(input) {
             throw new Error('Это не похоже на резервную копию Ежедневника');
         }
 
-        const resp = await fetch('/api/backup', {
+        const resp = await _fetchWithTimeout(_api('/api/backup'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
