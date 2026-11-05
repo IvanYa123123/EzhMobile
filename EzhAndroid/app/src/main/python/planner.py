@@ -1,3 +1,4 @@
+import sys
 import time
 import requests
 import urllib3
@@ -5,6 +6,17 @@ import certifi
 from datetime import datetime, timedelta
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# FIX (#6, medium): в Chaquopy при отсутствии консоли sys.stdout
+# может быть None. Раньше planner.py использовал голый print(),
+# что давало AttributeError на Android. Здесь тот же паттерн,
+# что в app.py::_safe_print.
+def _safe_print(*args, **kwargs):
+    try:
+        if sys.stdout is not None:
+            print(*args, **kwargs)
+    except Exception:
+        pass
 
 class SevSUPlanner:
     def __init__(self):
@@ -73,31 +85,17 @@ class SevSUPlanner:
     def get_schedule_for_week(self, group_name: str, week: int) -> list:
         params = {"v": "6.2", "section": "0", "group": group_name, "week": week}
         try:
-            # Таймаут на одну неделю — 8 секунд. Он же используется как
-            # «резерв» в _fetch_weeks_sequential, чтобы бюджет времени
-            # не был превышен ожиданием ответа очередной недели.
             response = self.session.get(self.api_url, params=params, timeout=8)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("ok"):
                     return data.get("schedule") or []
         except Exception as e:
-            print(f"Schedule fetch error week {week}: {e}")
+            _safe_print(f"Schedule fetch error week {week}: {e}")
         return []
 
     def _fetch_weeks_sequential(self, group_name: str, weeks, budget_sec: float = 22.0):
-        """Последовательная загрузка с общим бюджетом времени.
-
-        Возвращает (results: dict[int, list], exhausted: bool).
-
-        Резерв reserve=8s гарантирует, что мы не начнём запрос, который
-        заведомо вылезет за бюджет. Итого худший случай по времени —
-        budget_sec + reserve, но реально мы останавливаемся ДО того,
-        как начнём новый запрос: elapsed + reserve > budget_sec.
-
-        При budget_sec=22 это гарантирует, что суммарное время ответа
-        сервера не превысит клиентский таймаут (30с в api.js).
-        """
+        """Последовательная загрузка с общим бюджетом времени."""
         results = {}
         exhausted = False
         reserve = 8.0
@@ -105,19 +103,13 @@ class SevSUPlanner:
         for w in weeks:
             if time.monotonic() - t0 + reserve > budget_sec:
                 exhausted = True
-                print(f"[planner] timeout budget exhausted at week {w}", flush=True)
+                _safe_print(f"[planner] timeout budget exhausted at week {w}", flush=True)
                 break
             results[w] = self.get_schedule_for_week(group_name, w)
         return results, exhausted
 
     def get_semester_schedule(self, group_name: str, target_subgroup: str = "0", max_weeks: int = 25):
-        """Возвращает (schedule: list, exhausted: bool).
-
-        exhausted=True означает, что из-за бюджета времени мы не успели
-        опросить все недели — недостающие экстраполированы по шаблонам
-        чётной/нечётной недели. Вызывающий код должен решить, помечать
-        ли такую синхронизацию успешной.
-        """
+        """Возвращает (schedule: list, exhausted: bool)."""
         full_schedule = []
 
         odd_template = None
