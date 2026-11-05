@@ -420,7 +420,14 @@ function _renderMiniCalRow(item) {
 //  DRAG & DROP ВИДЖЕТОВ (Pointer Events + SVG-ёжик)
 // ============================================================
 
+// FIX (critical): в index.html виджеты лежат в #desktopRightWidgetsZone,
+// а не в #rightWidgetsZone. Раньше первая зона не была зарегистрирована
+// и pointerdown-слушатель на ручки ⋮⋮ в сайдбаре не вешался — drag
+// на десктопе был полностью мёртв.
+// #rightWidgetsZone оставлен: под него mobile.js в будущем может
+// клонировать карточки, плюс он упоминается в fixes.css.
 const _widgetZoneIds = [
+    'desktopRightWidgetsZone',
     'rightWidgetsZone',
     'underCalendarWidgetsZone',
     'mainColumnSections',
@@ -754,7 +761,7 @@ function _destroyGhost() {
 function _zoneUnderPoint(x, y) {
     const el = document.elementFromPoint(x, y);
     if (el) {
-        const zone = el.closest('#rightWidgetsZone, #underCalendarWidgetsZone, #mainColumnSections');
+        const zone = el.closest('#rightWidgetsZone, #desktopRightWidgetsZone, #underCalendarWidgetsZone, #mainColumnSections');
         if (zone) return zone;
     }
 
