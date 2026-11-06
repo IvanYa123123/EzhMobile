@@ -10,14 +10,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         await ensureGroupsLoaded();
 
+        // Автокомплит на поле «Группа» в модалке «Добавить друга».
         initGroupAutocomplete(document.getElementById('friendGroup'));
 
-        if (!window._gsAutocompleteInit) {
-            const gsInput = document.getElementById('gsGroupInput');
-            if (gsInput && typeof initGroupAutocomplete === 'function') {
-                initGroupAutocomplete(gsInput);
-                window._gsAutocompleteInit = true;
-            }
+        // Автокомплит на поле «Группа» в модалке выбора группы.
+        // initGroupAutocomplete имеет внутреннюю защиту dataset.acInit —
+        // повторный вызов для того же input безопасен.
+        const gsInput = document.getElementById('gsGroupInput');
+        if (gsInput && typeof initGroupAutocomplete === 'function') {
+            initGroupAutocomplete(gsInput);
+            window._gsAutocompleteInit = true;
         }
 
         await refreshTaskDates();
@@ -68,22 +70,56 @@ function updateDisplayPrefs() {
     renderCalendar();
 }
 
+// ============================================================
+//  СПРАВОЧНИК ГРУПП
+// ------------------------------------------------------------
+//  Ретраи (3 попытки, паузы 1с и 2с) + события:
+//    ezh:groups-loaded       — успешно, allGroups наполнен
+//    ezh:groups-load-failed  — все попытки провалились
+//
+//  group-select.js и autocomplete.js слушают эти события и
+//  перерисовывают подсказку / dropdown.
+//
+//  Без ретраев был реальный баг: если первый вызов apiLoadGroups()
+//  падал (гонка с инициализацией БД / таймаут Flask), groupsLoaded
+//  навсегда оставался false, а autocomplete.js вечно показывал
+//  «⏳ Загрузка справочника…». Теперь даже при сбое будет 3 попытки.
+// ============================================================
+
 async function ensureGroupsLoaded() {
     if (groupsLoaded) return;
-    try {
-        let groups = await apiLoadGroups();
-        if (groups && Array.isArray(groups)) {
-            groups.forEach(g => {
-                let name = typeof g === 'string' ? g : (g.name || g.title || JSON.stringify(g));
-                name = String(name).trim();
-                if (name && !validGroups.has(name.toUpperCase())) {
-                    validGroups.add(name.toUpperCase());
-                    allGroups.push(name);
-                }
-            });
+
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            let groups = await apiLoadGroups();
+            if (groups && Array.isArray(groups)) {
+                groups.forEach(g => {
+                    let name = typeof g === 'string' ? g : (g.name || g.title || JSON.stringify(g));
+                    name = String(name).trim();
+                    if (name && !validGroups.has(name.toUpperCase())) {
+                        validGroups.add(name.toUpperCase());
+                        allGroups.push(name);
+                    }
+                });
+            }
+            groupsLoaded = true;
+            groupsLoadFailed = false;
+            console.log('[groups] loaded', allGroups.length, 'items');
+            document.dispatchEvent(new Event('ezh:groups-loaded'));
+            return;
+        } catch (e) {
+            lastErr = e;
+            console.warn('[groups] attempt', attempt + 1, 'failed:', (e && e.message) || e);
+            if (attempt < 2) {
+                await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            }
         }
-        groupsLoaded = true;
-    } catch (e) { console.log("Справочник групп недоступен."); }
+    }
+
+    console.error('[groups] all attempts failed:', lastErr);
+    groupsLoadFailed = true;
+    document.dispatchEvent(new Event('ezh:groups-load-failed'));
 }
 
 function _extractHttpStatus(err) {
