@@ -16,6 +16,7 @@ except ImportError:
 
 from planner import SevSUPlanner
 from teacher_planner import SevSUTeacherPlanner
+from moodle_pro import moodle_bp
 
 _ANDROID_DATA = os.environ.get('EZH_DATA_DIR')
 if _ANDROID_DATA:
@@ -54,10 +55,6 @@ def _to_int(v, default=0):
     except (TypeError, ValueError):
         return default
 
-# FIX (#3, critical): безопасное приведение к строке. Раньше паттерн
-# (data.get('x') or '').strip() давал 500 на не-строковом поле:
-# 123 or '' → 123, 123.strip() → AttributeError. Теперь _s(None) = '',
-# _s(123) = '123', _s('  abc  ') = 'abc'.
 def _s(v, default=''):
     if v is None:
         return default
@@ -67,6 +64,8 @@ def _s(v, default=''):
         return default
 
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static')
+app.register_blueprint(moodle_bp)
+
 planner = SevSUPlanner()
 teacher_planner = SevSUTeacherPlanner(BASE_DIR)
 os.makedirs(SCHEDULES_DIR, exist_ok=True)
@@ -146,20 +145,9 @@ def make_safe_filename(name):
     return str(name).translate(_FORBIDDEN).replace('..', '__').strip('. ')[:120]
 
 def _schedule_cache_path(group, subgroup):
-    """Путь к файлу кэша расписания.
-
-    make_safe_filename заменяет '/' на '_', а группа с литеральным '_'
-    (например, ИВТ_б-24-1-о) давала бы тот же файл, что и группа с '/'
-    (ИВТ/б-24-1-о) — коллизия. 16 hex-символов md5 гарантируют
-    уникальность файла для любой пары (group, subgroup).
-    """
     safe = make_safe_filename(group)
     digest = hashlib.md5(f"{group}\x00{subgroup}".encode('utf-8')).hexdigest()[:16]
     return os.path.join(SCHEDULES_DIR, f"{safe}_{subgroup}_{digest}.json")
-
-# ============================================================
-#  ТРОТТЛИНГ СИНХРОНИЗАЦИИ
-# ============================================================
 
 class _MtimeJsonCache:
     __slots__ = ('path', 'lock', '_mtime', '_value', '_loaded')
@@ -228,10 +216,6 @@ def _mark_synced(key):
         data[key] = time.time()
         cache.write(data)
 
-# ============================================================
-#  ВАЛИДАЦИЯ
-# ============================================================
-
 _VALID_SUBGROUPS = frozenset(("0", "1", "2"))
 _GROUP_RE = re.compile(r'^[A-Za-zА-Яа-яЁё0-9/._\-]{1,64}$')
 _LINK_RE = re.compile(r'^(?:https?://|mailto:)[^\s"<>]{1,2000}$', re.IGNORECASE)
@@ -266,10 +250,6 @@ def _validate_time_range(raw):
     s = _s(raw)
     return s if _TIME_RANGE_RE.match(s) else None
 
-# ============================================================
-#  CUSTOM GROUPS
-# ============================================================
-
 def load_custom_groups():
     try:
         with open(CUSTOM_GROUPS_FILE, 'r', encoding='utf-8') as f:
@@ -289,10 +269,6 @@ def save_custom_groups(groups):
     except OSError:
         return False
 
-# ============================================================
-#  HEALTH / INDEX
-# ============================================================
-
 @app.route("/api/health")
 def health():
     return jsonify({"ok": True, "version": APP_VERSION})
@@ -300,10 +276,6 @@ def health():
 @app.route("/")
 def index():
     return send_from_directory(STATIC_DIR, 'index.html')
-
-# ============================================================
-#  GROUPS
-# ============================================================
 
 @app.route("/api/groups")
 @limiter.limit("60 per minute")
@@ -357,10 +329,6 @@ def add_custom_group():
     if not save_custom_groups(groups):
         return jsonify({"error": "save failed"}), 500
     return jsonify({"success": True})
-
-# ============================================================
-#  TASKS
-# ============================================================
 
 @app.route("/api/tasks", methods=["GET", "POST"])
 @limiter.limit("300 per minute")
@@ -422,10 +390,6 @@ def task_dates():
     return jsonify([r["date"] for r in get_db().execute(
         "SELECT DISTINCT date FROM tasks ORDER BY date").fetchall()])
 
-# ============================================================
-#  ЭКСПОРТ ЗАМЕТОК В .ICS
-# ============================================================
-
 _ICS_TASK_STATUS = {
     'green': 'Обычная', 'orange': 'Важная',
     'red': 'Срочная', 'completed': 'Выполнено',
@@ -437,7 +401,7 @@ def _ics_escape(s):
     return (str(s).replace('\\', '\\\\').replace(';', '\\;')
             .replace(',', '\\,').replace('\r', '').replace('\n', '\\n'))
 
-def _fold_ics_line(line: str, limit: int = 75) -> str:
+def _fold_ics_line(line, limit=75):
     if not line:
         return line
     if len(line.encode('utf-8')) <= limit:
@@ -505,10 +469,6 @@ def export_tasks_ics():
         headers={'Content-Disposition': 'attachment; filename="ezh_notes.ics"',
                  'Cache-Control': 'no-store'},
     )
-
-# ============================================================
-#  РЕЗЕРВНАЯ КОПИЯ / ВОССТАНОВЛЕНИЕ
-# ============================================================
 
 _BACKUP_APP_ID = "EZHednevnik"
 
@@ -600,8 +560,6 @@ def _restore_backup(conn):
                 try:
                     cleaned = validate_group(_s(name))
                 except ValueError:
-                    # Имя не проходит валидацию — считаем и сообщаем клиенту,
-                    # а не выбрасываем молча.
                     skipped_groups += 1
                     continue
                 if cleaned in seen:
@@ -610,10 +568,6 @@ def _restore_backup(conn):
                 seen.add(cleaned)
                 cleaned_groups.append(cleaned)
 
-        # Сначала коммитим БД и только потом перезаписываем файл групп.
-        # Иначе при сбое коммита БД откатывалась, а custom_groups оставались
-        # уже подменёнными — рассинхрон, из-за которого «восстановленные»
-        # группы не совпадали с данными.
         conn.commit()
     except Exception as e:
         try:
@@ -634,10 +588,6 @@ def _restore_backup(conn):
 
     _safe_print(f"[backup] restore ok: {restored}", flush=True)
     return jsonify({"success": True, "restored": restored})
-
-# ============================================================
-#  LABS
-# ============================================================
 
 @app.route("/api/labs", methods=["GET", "POST"])
 @limiter.limit("120 per minute")
@@ -709,8 +659,6 @@ def get_lab_items():
 @limiter.limit("120 per minute")
 def sync_lab_items():
     data = request.get_json(silent=True) or {}
-    # FIX (#8): group теперь всегда строка через _s(). Раньше group=123
-    # проходил not-group проверку (123 truthy) и уезжал в SQL как int.
     group = _s(data.get('group'))
     items = data.get('items')
     if not group or not isinstance(items, list):
@@ -798,8 +746,6 @@ def update_lab_item(item_id):
     if not row:
         return jsonify({"error": "not found"}), 404
 
-    # str(None) == "None" уезжало в title, если клиент присылал
-    # {"title": null}. Обрабатываем явно: None → оставить старое.
     raw_title = data.get('title')
     if raw_title is None:
         new_title = row["title"]
@@ -816,13 +762,7 @@ def update_lab_item(item_id):
     conn.commit()
     return jsonify({"success": True, "title": new_title, "completed": new_comp})
 
-# ============================================================
-#  SCHEDULE
-# ============================================================
-
 def _save_schedule_cache(cache_file, schedule):
-    """Сохраняет расписание в кэш, но не затирает более полный кэш
-    неполным ответом (защита от сетевого сбоя/частичной выборки)."""
     if not schedule:
         return True
     old = None
@@ -832,9 +772,6 @@ def _save_schedule_cache(cache_file, schedule):
                 old = json.load(f)
         except (json.JSONDecodeError, OSError):
             old = None
-    # FIX (#7, medium): если кэш повреждён и в нём лежит dict (а не list),
-    # то `for x in old` даёт ключи-строки, а x.get('date') — AttributeError.
-    # Проверяем isinstance явно.
     if old and isinstance(old, list) and len(schedule) < len(old) * 0.9:
         old_max = max((str(x.get('date') or '') for x in old), default='')
         new_max = max((str(x.get('date') or '') for x in schedule), default='')
@@ -995,10 +932,6 @@ def export_ics():
         headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"}
     )
 
-# ============================================================
-#  SEARCH
-# ============================================================
-
 @app.route("/api/search")
 @limiter.limit("240 per minute")
 def search():
@@ -1017,10 +950,6 @@ def search():
         "is_event, recurrence FROM custom_schedule WHERE lesson LIKE ? "
         "ORDER BY base_date DESC LIMIT 50", (like,)).fetchall()]
     return jsonify({"tasks": tasks, "events": events, "count": len(tasks) + len(events)})
-
-# ============================================================
-#  FRIENDS
-# ============================================================
 
 @app.route("/api/friends", methods=["GET", "POST"])
 @limiter.limit("120 per minute")
@@ -1077,10 +1006,6 @@ def update_or_delete_friend(friend_id):
     conn.commit()
     return jsonify({"success": True})
 
-# ============================================================
-#  SUBJECTS
-# ============================================================
-
 @app.route("/api/subjects", methods=["GET", "POST"])
 @limiter.limit("120 per minute")
 def manage_subjects():
@@ -1110,10 +1035,6 @@ def manage_subjects():
     })
     resp.headers['Cache-Control'] = 'private, max-age=300'
     return resp
-
-# ============================================================
-#  CUSTOM SCHEDULE
-# ============================================================
 
 @app.route("/api/custom_schedule", methods=["GET", "POST"])
 @limiter.limit("120 per minute")
@@ -1194,10 +1115,6 @@ def update_custom_schedule(item_id):
     conn.execute("DELETE FROM custom_schedule WHERE id=?", (item_id,))
     conn.commit()
     return jsonify({"success": True})
-
-# ============================================================
-#  TEACHERS
-# ============================================================
 
 @app.route("/api/teachers")
 @limiter.limit("60 per minute")
