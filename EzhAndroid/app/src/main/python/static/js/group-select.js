@@ -8,20 +8,24 @@ function _gsBindFocusOnShow(modalEl) {
     _gsFocusBound = true;
     modalEl.addEventListener('shown.bs.modal', () => {
         const inp = document.getElementById('gsGroupInput');
-        if (inp) {
-            // Небольшая задержка — Bootstrap анимирует открытие.
-            setTimeout(() => { inp.focus(); }, 60);
-        }
+        if (inp) setTimeout(() => { inp.focus(); }, 60);
     });
 }
 
 function _gsUpdateHintForLoadState() {
     const hint = document.getElementById('gsHint');
     if (!hint) return;
-    // Если группы ещё не загружены — предупреждаем.
-    const loading = (typeof groupsLoaded !== 'undefined') && !groupsLoaded && allGroups.length === 0;
-    if (loading) {
-        hint.textContent = '⏳ Загрузка справочника групп…';
+
+    const failed = (typeof groupsLoadFailed !== 'undefined') && groupsLoadFailed;
+    const loaded = (typeof groupsLoaded !== 'undefined') && groupsLoaded;
+
+    if (failed) {
+        hint.textContent = 'Справочник недоступен. Введите группу вручную и нажмите «Продолжить».';
+        hint.className = 'small text-warning mb-2';
+        return;
+    }
+    if (!loaded) {
+        hint.textContent = '⏳ Загрузка справочника…';
         hint.className = 'small text-muted mb-2';
         return;
     }
@@ -29,11 +33,14 @@ function _gsUpdateHintForLoadState() {
     hint.className = 'small text-muted mb-2';
 }
 
+document.addEventListener('ezh:groups-loaded', _gsUpdateHintForLoadState);
+document.addEventListener('ezh:groups-load-failed', _gsUpdateHintForLoadState);
+
 function openGroupSelectModal(forced = false) {
     try {
-        console.log("[group-select] Открытие модалки...");
+        console.log('[group-select] open, forced =', forced);
         if (typeof bootstrap === 'undefined') {
-            alert("❌ Критическая ошибка: Bootstrap не загружен!");
+            alert('❌ Критическая ошибка: Bootstrap не загружен!');
             return;
         }
 
@@ -75,17 +82,16 @@ function openGroupSelectModal(forced = false) {
             `;
             document.body.appendChild(modalEl);
             document.getElementById('gsSubmitBtn').onclick = saveGroupFromModal;
-
-            if (typeof initGroupAutocomplete === 'function') {
-                initGroupAutocomplete(document.getElementById('gsGroupInput'));
-                // FIX: раньше флаг не ставился здесь, и main.js мог
-                // повторно вызвать initGroupAutocomplete → дублирующийся
-                // dropdown на body.
-                window._gsAutocompleteInit = true;
-            }
         }
 
-        // Фокус на поле при открытии — один раз навешиваем listener.
+        // Всегда инициализируем — внутри защита input.dataset.acInit.
+        const gsInput = document.getElementById('gsGroupInput');
+        if (gsInput && typeof initGroupAutocomplete === 'function') {
+            initGroupAutocomplete(gsInput);
+        } else if (gsInput) {
+            console.warn('[group-select] initGroupAutocomplete not available');
+        }
+
         _gsBindFocusOnShow(modalEl);
 
         const title = document.getElementById('gsModalTitle');
@@ -96,8 +102,9 @@ function openGroupSelectModal(forced = false) {
 
         const savedGroup = localStorage.getItem('savedGroup') || '';
         const savedSub = localStorage.getItem('savedSubgroup') || '0';
-        document.getElementById('gsGroupInput').value = savedGroup;
-        document.getElementById('gsSubgroupSelect').value = savedSub;
+        if (gsInput) gsInput.value = savedGroup;
+        const subSel = document.getElementById('gsSubgroupSelect');
+        if (subSel) subSel.value = savedSub;
 
         _gsUpdateHintForLoadState();
 
@@ -105,7 +112,8 @@ function openGroupSelectModal(forced = false) {
         _groupSelectModalInstance.show();
 
     } catch (e) {
-        alert("❌ ОШИБКА ПРИ ОТКРЫТИИ МОДАЛКИ:\n" + e.message);
+        console.error('[group-select] open failed:', e);
+        alert('❌ Ошибка при открытии модалки:\n' + (e && e.message ? e.message : e));
     }
 }
 
@@ -124,15 +132,10 @@ async function saveGroupFromModal() {
         return;
     }
 
-    // Если группы нет в справочнике и это НЕ пользовательская группа —
-    // спросим подтверждение. Сама логика добавления уже сработала в
-    // autocomplete (пользователь нажал «Создать группу»), но если он
-    // просто ввёл текст руками — здесь последний рубеж.
     if (typeof validGroups !== 'undefined' && validGroups.size > 0
             && !validGroups.has(group.toUpperCase())) {
         const ok = confirm(
-            `Группы «${group}» нет в справочнике.\n\n` +
-            `Продолжить? Она будет добавлена в вашу базу.`
+            `Группы «${group}» нет в справочнике.\n\nПродолжить? Она будет добавлена в вашу базу.`
         );
         if (!ok) { input.focus(); return; }
         try {
