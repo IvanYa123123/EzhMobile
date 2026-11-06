@@ -43,7 +43,6 @@
     <div id="loaderText" class="mt-3 fw-bold text-secondary fs-5">Загрузка...</div>
 </div>
 
-<!-- КОМПАКТНАЯ ШАПКА (Мобильная) -->
 <div id="compactHeader" class="d-md-none bg-white border-bottom shadow-sm px-3 py-2 d-flex align-items-center justify-content-between" style="position: sticky; top: 0; z-index: 1050;">
     <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0" id="compactHeaderNormal">
         <span class="ezh-logo-wrap" onclick="ezhJump()" title="Прыгнуть">
@@ -61,7 +60,6 @@
         <button class="btn btn-light btn-sm rounded-circle p-2" onclick="manualRefresh()" title="Обновить"><span style="font-size: 1.1rem;">🔄</span></button>
         <button class="btn btn-light btn-sm rounded-circle p-2" onclick="openSettingsModal()" title="Настройки"><span style="font-size: 1.1rem;">⚙️</span></button>
     </div>
-    <!-- инлайн-поиск -->
     <div id="compactSearchRow" class="d-none align-items-center gap-2 w-100">
         <input type="text" id="globalSearchInput" class="form-control form-control-sm"
                placeholder="Поиск по заметкам…" autocomplete="new-password"
@@ -71,7 +69,6 @@
 </div>
 
 <div class="container-fluid p-3">
-    <!-- ОГРОМНАЯ ШАПКА (десктоп) -->
     <div class="controls-header bg-white p-2 rounded shadow-sm border mb-3 d-none d-md-block" id="onboardingHeader">
         <div class="row align-items-center g-2">
             <div class="col-md-3">
@@ -118,7 +115,6 @@
     </div>
 
     <div class="row">
-        <!-- ВКЛАДКА РАСПИСАНИЕ -->
         <div class="col-xl-9 col-lg-8 mb-4 main-column mobile-tab-pane" data-tab="schedule">
             <div class="d-flex flex-column w-100">
                 <div class="calendar-nav-row" id="mainCalendarGridContainer">
@@ -163,7 +159,6 @@
             </div>
         </div>
 
-        <!-- ВКЛАДКА ДЕНЬ -->
         <div id="dayViewContainer" class="mobile-tab-pane" data-tab="day" style="display: none;">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <button class="btn btn-outline-secondary btn-sm" onclick="navigateDay(-1)">‹ Пред.</button>
@@ -171,7 +166,6 @@
                 <button class="btn btn-outline-secondary btn-sm" onclick="navigateDay(1)">След. ›</button>
             </div>
 
-            <!-- Панель навигации по заметкам/событиям -->
             <div class="day-nav-panel d-flex justify-content-center gap-2 mb-3" id="dayNavPanel">
                 <button type="button" class="btn btn-sm btn-outline-secondary day-nav-btn" style="min-width: 44px; min-height: 44px;" onclick="navigateNoteFromHere(-1)" title="Предыдущая заметка">📝‹</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary day-nav-btn" style="min-width: 44px; min-height: 44px;" onclick="navigateNoteFromHere(1)" title="Следующая заметка">📝›</button>
@@ -182,14 +176,10 @@
             <div id="dayViewContent" class="bg-white p-3 rounded shadow-sm border"></div>
         </div>
 
-        <!-- ВКЛАДКА ВИДЖЕТЫ -->
         <div class="col-12 mobile-tab-pane" data-tab="widgets" style="display: none;">
-            <div id="rightWidgetsZone" class="d-flex flex-column gap-3">
-                <!-- сюда mobile.js будет клонировать/перемещать карточки из desktop-сайдбара -->
-            </div>
+            <div id="rightWidgetsZone" class="d-flex flex-column gap-3"></div>
         </div>
 
-        <!-- Сайдбар (десктоп) -->
         <div class="col-xl-3 col-lg-4 sidebar-column d-none d-lg-block">
             <div id="desktopRightWidgetsZone" class="sticky-top d-flex flex-column gap-3" style="top: 15px;">
                 <div class="widget-card" id="widgetMiniCalCard" data-draggable-widget>
@@ -357,7 +347,6 @@
     </div>
 </div>
 
-<!-- Модалки -->
 <div class="modal fade" id="addFriendModal" tabindex="-1">
   <div class="modal-dialog"><div class="modal-content border-0 shadow">
     <div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">Добавить друга</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
@@ -421,6 +410,34 @@
           <label class="settings-row" for="settingsToggleWidgetNotes1"><span class="settings-row-label">Заметки 1</span><input class="form-check-input" type="checkbox" id="settingsToggleWidgetNotes1" onchange="saveSettingsFromUI()"></label>
           <label class="settings-row" for="settingsToggleWidgetNotes2"><span class="settings-row-label">Заметки 2</span><input class="form-check-input" type="checkbox" id="settingsToggleWidgetNotes2" onchange="saveSettingsFromUI()"></label>
           <label class="settings-row" for="settingsToggleWidgetNotes3"><span class="settings-row-label">Заметки 3</span><input class="form-check-input" type="checkbox" id="settingsToggleWidgetNotes3" onchange="saveSettingsFromUI()"></label>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title text-primary">Pro-виджеты (Moodle)</div>
+          <div id="proWidgetsLockedMsg" class="alert alert-secondary py-2 small mb-2 d-flex align-items-center justify-content-between" style="display: none;">
+            <span>🔒 Войдите в Про-режим, чтобы получить доступ к расширенным виджетам.</span>
+            <button type="button" class="btn btn-sm btn-primary ms-2 text-nowrap" onclick="openMoodleModal()">Войти</button>
+          </div>
+          <div class="row g-2" id="proWidgetsGrid">
+            <div class="col-6 pro-widget-toggle" style="display: none;">
+              <label class="settings-row px-2 m-0" for="settingsToggleWidgetLabsPro">
+                <span class="settings-row-label text-primary fw-bold">Статистика сдач</span>
+                <input class="form-check-input" type="checkbox" id="settingsToggleWidgetLabsPro">
+              </label>
+            </div>
+            <div class="col-6 pro-widget-toggle" style="display: none;">
+              <label class="settings-row px-2 m-0" for="settingsToggleWidgetMoodleAvg">
+                <span class="settings-row-label text-primary fw-bold">Средний балл</span>
+                <input class="form-check-input" type="checkbox" id="settingsToggleWidgetMoodleAvg">
+              </label>
+            </div>
+            <div class="col-6 pro-widget-toggle" style="display: none;">
+              <label class="settings-row px-2 m-0" for="settingsToggleWidgetMoodleSubj">
+                <span class="settings-row-label text-primary fw-bold">Баллы по предмету</span>
+                <input class="form-check-input" type="checkbox" id="settingsToggleWidgetMoodleSubj">
+              </label>
+            </div>
+          </div>
         </div>
 
         <div class="settings-group">
@@ -488,7 +505,6 @@
   </div>
 </div>
 
-<!-- Модалка Еж Про (Moodle) -->
 <div class="modal fade" id="moodleModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
@@ -555,7 +571,6 @@
   </div>
 </div>
 
-<!-- Модалка выбора группы -->
 <div class="modal fade" id="groupSelectModal" tabindex="-1" aria-labelledby="gsModalTitle" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
@@ -590,7 +605,6 @@
   </div>
 </div>
 
-<!-- Модалка «Остаток пар» -->
 <div class="modal fade" id="statsModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
@@ -603,7 +617,6 @@
   </div>
 </div>
 
-<!-- Модалка «Лабораторные» -->
 <div class="modal fade" id="labsModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
@@ -616,7 +629,6 @@
   </div>
 </div>
 
-<!-- Модалка «Список лаб по предмету» -->
 <div class="modal fade" id="labItemsModal" tabindex="-1">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
@@ -629,7 +641,6 @@
   </div>
 </div>
 
-<!-- Модалка кастомного расписания -->
 <div class="modal fade" id="customScheduleModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
@@ -705,7 +716,6 @@
   </div>
 </div>
 
-<!-- Модалка настроек предмета -->
 <div class="modal fade" id="subjectSettingsModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content border-0 shadow">
@@ -740,7 +750,6 @@
   </div>
 </div>
 
-<!-- Модалка выбора: только эта неделя / все повторения -->
 <div class="modal fade" id="recurrenceActionModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
@@ -756,7 +765,6 @@
   </div>
 </div>
 
-<!-- Модалка выбора типа заметки -->
 <div class="modal fade" id="taskKindModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
@@ -772,7 +780,6 @@
   </div>
 </div>
 
-<!-- Нижнее меню -->
 <nav class="mobile-bottom-nav d-lg-none" id="mobileBottomNav">
     <button type="button" class="mobile-nav-item active" data-tab="schedule" onclick="switchMobileTab('schedule')"><span class="nav-icon">📅</span><span>Расписание</span></button>
     <button type="button" class="mobile-nav-item" data-tab="day" onclick="switchMobileTab('day')"><span class="nav-icon">📄</span><span>День</span></button>
@@ -809,6 +816,7 @@
 <script src="/static/js/custom-theme.js?v=4"></script>
 <script src="/static/js/mobile.js?v=4"></script>
 <script src="/static/js/group-select.js?v=4"></script>
+<script src="/static/js/moodle-pro.js?v=4"></script>
 <script src="/static/js/main.js?v=4"></script>
 </body>
 </html>
