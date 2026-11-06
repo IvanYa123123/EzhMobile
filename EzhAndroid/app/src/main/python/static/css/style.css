@@ -965,6 +965,37 @@ body {
     margin-top: 2px;
 }
 .autocomplete-add:hover,
+.autocomplete-footer {
+    padding: 6px 14px 4px;
+    font-size: 0.72em;
+    color: var(--text-muted);
+    text-align: center;
+    border-top: 1px solid var(--border-soft);
+    margin-top: 4px;
+    cursor: default;
+    user-select: none;
+}
+.autocomplete-add {
+    /* override: многострочный блок */
+    padding-top: 8px;
+    padding-bottom: 8px;
+    line-height: 1.3;
+}
+.autocomplete-add .autocomplete-add-title {
+    font-weight: 700;
+    color: var(--accent-hover);
+}
+.autocomplete-add .autocomplete-add-hint {
+    font-size: 0.78em;
+    color: var(--text-muted);
+    margin-top: 2px;
+    font-weight: 400;
+}
+.autocomplete-add:hover .autocomplete-add-hint,
+.autocomplete-add.active .autocomplete-add-hint {
+    color: var(--accent-hover);
+    opacity: 0.85;
+}
 .autocomplete-add.active { background: var(--accent-soft); color: var(--accent-hover); }
 .autocomplete-empty { color: var(--text-muted); cursor: default; font-style: italic; padding: 10px 14px; text-align: center; }
 .autocomplete-empty:hover { background: transparent; }
