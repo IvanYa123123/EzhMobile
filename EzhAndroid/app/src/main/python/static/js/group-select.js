@@ -1,6 +1,33 @@
 // Динамическая модалка выбора группы.
 
 let _groupSelectModalInstance = null;
+let _gsFocusBound = false;
+
+function _gsBindFocusOnShow(modalEl) {
+    if (_gsFocusBound) return;
+    _gsFocusBound = true;
+    modalEl.addEventListener('shown.bs.modal', () => {
+        const inp = document.getElementById('gsGroupInput');
+        if (inp) {
+            // Небольшая задержка — Bootstrap анимирует открытие.
+            setTimeout(() => { inp.focus(); }, 60);
+        }
+    });
+}
+
+function _gsUpdateHintForLoadState() {
+    const hint = document.getElementById('gsHint');
+    if (!hint) return;
+    // Если группы ещё не загружены — предупреждаем.
+    const loading = (typeof groupsLoaded !== 'undefined') && !groupsLoaded && allGroups.length === 0;
+    if (loading) {
+        hint.textContent = '⏳ Загрузка справочника групп…';
+        hint.className = 'small text-muted mb-2';
+        return;
+    }
+    hint.textContent = 'Начните вводить номер группы — например, ИВТ/б-24-1-о.';
+    hint.className = 'small text-muted mb-2';
+}
 
 function openGroupSelectModal(forced = false) {
     try {
@@ -11,7 +38,7 @@ function openGroupSelectModal(forced = false) {
         }
 
         let modalEl = document.getElementById('groupSelectModal');
-        
+
         if (!modalEl) {
             modalEl = document.createElement('div');
             modalEl.className = 'modal fade';
@@ -51,8 +78,15 @@ function openGroupSelectModal(forced = false) {
 
             if (typeof initGroupAutocomplete === 'function') {
                 initGroupAutocomplete(document.getElementById('gsGroupInput'));
+                // FIX: раньше флаг не ставился здесь, и main.js мог
+                // повторно вызвать initGroupAutocomplete → дублирующийся
+                // dropdown на body.
+                window._gsAutocompleteInit = true;
             }
         }
+
+        // Фокус на поле при открытии — один раз навешиваем listener.
+        _gsBindFocusOnShow(modalEl);
 
         const title = document.getElementById('gsModalTitle');
         const cancelBtn = document.getElementById('gsCancelBtn');
@@ -65,9 +99,11 @@ function openGroupSelectModal(forced = false) {
         document.getElementById('gsGroupInput').value = savedGroup;
         document.getElementById('gsSubgroupSelect').value = savedSub;
 
+        _gsUpdateHintForLoadState();
+
         _groupSelectModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
         _groupSelectModalInstance.show();
-        
+
     } catch (e) {
         alert("❌ ОШИБКА ПРИ ОТКРЫТИИ МОДАЛКИ:\n" + e.message);
     }
@@ -86,6 +122,31 @@ async function saveGroupFromModal() {
         if (hint) { hint.textContent = 'Введите название группы'; hint.className = 'small text-danger mb-2'; }
         input.focus();
         return;
+    }
+
+    // Если группы нет в справочнике и это НЕ пользовательская группа —
+    // спросим подтверждение. Сама логика добавления уже сработала в
+    // autocomplete (пользователь нажал «Создать группу»), но если он
+    // просто ввёл текст руками — здесь последний рубеж.
+    if (typeof validGroups !== 'undefined' && validGroups.size > 0
+            && !validGroups.has(group.toUpperCase())) {
+        const ok = confirm(
+            `Группы «${group}» нет в справочнике.\n\n` +
+            `Продолжить? Она будет добавлена в вашу базу.`
+        );
+        if (!ok) { input.focus(); return; }
+        try {
+            await apiAddCustomGroup(group);
+            validGroups.add(group.toUpperCase());
+            if (!allGroups.includes(group)) allGroups.push(group);
+        } catch (e) {
+            console.error('[group-select] add custom failed:', e);
+            if (hint) {
+                hint.textContent = 'Не удалось добавить группу. Проверьте формат (буквы, цифры, / . _ -).';
+                hint.className = 'small text-danger mb-2';
+            }
+            return;
+        }
     }
 
     document.getElementById('groupSelect').value = group;
