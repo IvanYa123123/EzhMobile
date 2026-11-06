@@ -1,23 +1,18 @@
 // T9-автокомплит для полей ввода групп.
 //
-// Оптимизации:
-//   • Debounce 80 мс на input — при быстром вводе не запускаем render()
-//     на каждый keystroke.
-//   • Кэш lowercase-версий всех групп (allGroupsLower). Убирает 500+
-//     .toLowerCase() на каждый символ. Инвалидируется автоматически
-//     при изменении длины allGroups.
-//
-// UX:
-//   • Пока allGroups пуст и groupsLoaded === false — показываем
-//     «⏳ Загрузка справочника…» вместо «Ничего не найдено».
-//   • Под списком — счётчик «Всего групп: N».
-//   • Если точного совпадения нет — двухстрочная кнопка «➕ Создать
-//     группу «XYZ» / Не найдена в справочнике — добавьте в свою базу».
-//   • Ошибки apiAddCustomGroup показываются пользователю.
+// Поведение:
+//   • groupsLoaded === false и groupsLoadFailed === false → dropdown
+//     показывает «⏳ Загрузка справочника…» + кнопку «Создать».
+//   • groupsLoadFailed === true → «⚠️ Справочник недоступен» + кнопку
+//     «Создать».
+//   • groupsLoaded === true → обычный T9-поиск по allGroups.
+//   • События ezh:groups-loaded / ezh:groups-load-failed перерисовывают
+//     открытый dropdown (через main.js → ensureGroupsLoaded).
+//   • Кнопка «➕ Создать группу «XYZ»» показывается при любом состоянии,
+//     если введён непустой текст и точного совпадения нет.
 
 const _AC_DEBOUNCE_MS = 80;
 
-// Кэш lowercase-версий allGroups.
 let _allGroupsLowerCache = null;
 
 function _getAllGroupsLower() {
@@ -27,22 +22,22 @@ function _getAllGroupsLower() {
     return _allGroupsLowerCache;
 }
 
-function _acIsLoading() {
-    // groupsLoaded объявлена в state.js; проверяем через typeof на случай,
-    // если autocomplete.js подключён раньше state.js (не должно быть, но).
-    return (typeof groupsLoaded !== 'undefined') && !groupsLoaded && allGroups.length === 0;
-}
-
 function initGroupAutocomplete(input) {
     if (!input) return;
 
-    // Защита от повторной инициализации того же input
-    if (input.dataset.acInit === '1') return;
+    if (input.dataset.acInit === '1') {
+        console.log('[ac] already initialized, skip:', input.id);
+        return;
+    }
     input.dataset.acInit = '1';
+
+    console.log('[ac] init on', input.id || input.name);
 
     let dropdown = document.createElement('div');
     dropdown.className = 'autocomplete-list';
+    dropdown.dataset.acFor = input.id || '';
     document.body.appendChild(dropdown);
+
     let currentFocus = -1;
     let renderTimer = null;
 
@@ -53,29 +48,67 @@ function initGroupAutocomplete(input) {
         dropdown.style.width = Math.max(rect.width, 280) + 'px';
     }
     function hide() { dropdown.style.display = 'none'; currentFocus = -1; }
-    function getItems() { return dropdown.querySelectorAll('.autocomplete-item:not(.autocomplete-empty):not(.autocomplete-footer)'); }
+    function getItems() {
+        return dropdown.querySelectorAll(
+            '.autocomplete-item:not(.autocomplete-empty):not(.autocomplete-footer)'
+        );
+    }
     function updateActive() {
         let items = getItems();
         items.forEach((it, i) => it.classList.toggle('active', i === currentFocus));
         if (items[currentFocus]) items[currentFocus].scrollIntoView({ block: 'nearest' });
     }
 
+    function _addButtonHtml(query) {
+        return `
+            <div class="autocomplete-item autocomplete-add" data-add="${escapeAttr(query)}">
+                <div class="autocomplete-add-title">➕ Создать группу «${escapeHtml(query)}»</div>
+                <div class="autocomplete-add-hint">Не найдена в справочнике — добавьте в свою базу</div>
+            </div>`;
+    }
+
     function render() {
-        // ── 1. Состояние загрузки ─────────────────────────────
-        if (_acIsLoading()) {
-            dropdown.innerHTML =
-                '<div class="autocomplete-item autocomplete-empty">⏳ Загрузка справочника групп…</div>';
+        const query = input.value.trim();
+        const lower = query.toLowerCase();
+        const isLoading = (typeof groupsLoaded !== 'undefined') && !groupsLoaded
+            && (typeof groupsLoadFailed === 'undefined' || !groupsLoadFailed);
+        const failed = (typeof groupsLoadFailed !== 'undefined') && groupsLoadFailed;
+
+        console.log('[ac] render', {
+            input: input.id,
+            query: query,
+            groupsCount: allGroups.length,
+            loaded: (typeof groupsLoaded !== 'undefined') ? groupsLoaded : 'undefined',
+            failed: failed,
+            isLoading: isLoading
+        });
+
+        let html = '';
+
+        // ── 1. Состояние: справочник недоступен ──────────────
+        if (failed && allGroups.length === 0) {
+            html += '<div class="autocomplete-item autocomplete-empty">⚠️ Справочник недоступен</div>';
+            if (query) html += _addButtonHtml(query);
+            dropdown.innerHTML = html;
             positionDropdown();
             dropdown.style.display = 'block';
             currentFocus = -1;
             return;
         }
 
-        // ── 2. Поиск ──────────────────────────────────────────
-        let query = input.value.trim();
-        let lower = query.toLowerCase();
-        let matches = [];
+        // ── 2. Состояние: загрузка ──────────────────────────
+        if (isLoading && allGroups.length === 0) {
+            html += '<div class="autocomplete-item autocomplete-empty">⏳ Загрузка справочника…</div>';
+            if (query) html += _addButtonHtml(query);
+            dropdown.innerHTML = html;
+            positionDropdown();
+            dropdown.style.display = 'block';
+            currentFocus = -1;
+            return;
+        }
 
+        // ── 3. Обычный поиск ────────────────────────────────
+        let matches = [];
         if (!lower) {
             matches = allGroups.slice(0, 40);
         } else {
@@ -88,33 +121,20 @@ function initGroupAutocomplete(input) {
             }
             matches = starts.concat(contains).slice(0, 50);
         }
-        let exact = lower && _getAllGroupsLower().indexOf(lower) !== -1;
-
-        // ── 3. Сборка HTML ────────────────────────────────────
-        let html = '';
+        const exact = lower && _getAllGroupsLower().indexOf(lower) !== -1;
 
         if (matches.length === 0 && !query) {
-            html = '<div class="autocomplete-item autocomplete-empty">Справочник групп пуст</div>';
+            html += '<div class="autocomplete-item autocomplete-empty">Справочник групп пуст</div>';
         } else if (matches.length === 0) {
-            html = '<div class="autocomplete-item autocomplete-empty">В справочнике ничего не найдено</div>';
+            html += '<div class="autocomplete-item autocomplete-empty">В справочнике ничего не найдено</div>';
         } else {
             matches.forEach(g => {
                 html += `<div class="autocomplete-item" data-value="${escapeAttr(g)}">${highlightMatch(g, query)}</div>`;
             });
         }
 
-        // Кнопка «создать свою группу» — если запрос непустой и нет
-        // точного совпадения. Показываем даже если есть частичные
-        // совпадения (юзер мог искать «свою» группу с другим написанием).
-        if (query && !exact) {
-            html += `
-                <div class="autocomplete-item autocomplete-add" data-add="${escapeAttr(query)}">
-                    <div class="autocomplete-add-title">➕ Создать группу «${escapeHtml(query)}»</div>
-                    <div class="autocomplete-add-hint">Не найдена в справочнике — добавьте в свою базу</div>
-                </div>`;
-        }
+        if (query && !exact) html += _addButtonHtml(query);
 
-        // Счётчик под списком
         if (allGroups.length > 0) {
             html += `<div class="autocomplete-footer">Всего групп в справочнике: ${allGroups.length}</div>`;
         }
@@ -130,7 +150,7 @@ function initGroupAutocomplete(input) {
         renderTimer = setTimeout(render, _AC_DEBOUNCE_MS);
     }
 
-    input.addEventListener('focus', () => render());
+    input.addEventListener('focus', render);
     input.addEventListener('input', renderDebounced);
     input.addEventListener('blur', () => setTimeout(hide, 180));
 
@@ -154,7 +174,7 @@ function initGroupAutocomplete(input) {
                 e.stopPropagation();
                 items[currentFocus].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
             } else if (items.length > 0 && input.value.trim()) {
-                let exact = _getAllGroupsLower().indexOf(input.value.trim().toLowerCase()) !== -1;
+                const exact = _getAllGroupsLower().indexOf(input.value.trim().toLowerCase()) !== -1;
                 if (exact) hide();
             }
         } else if (e.key === 'Escape') {
@@ -176,15 +196,15 @@ function initGroupAutocomplete(input) {
         }
 
         if (item.dataset.add) {
-            let name = item.dataset.add.trim();
+            const name = item.dataset.add.trim();
             if (!name) return;
+            console.log('[ac] creating custom group:', name);
             try {
-                let data = await apiAddCustomGroup(name);
+                const data = await apiAddCustomGroup(name);
                 if (data && data.success) {
                     if (!validGroups.has(name.toUpperCase())) {
                         validGroups.add(name.toUpperCase());
                         allGroups.push(name);
-                        // Кэш инвалидируется по длине автоматически.
                     }
                     input.value = name;
                     hide();
@@ -198,12 +218,20 @@ function initGroupAutocomplete(input) {
                     }
                 }
             } catch (err) {
-                console.error('[autocomplete] add custom group failed:', err);
+                console.error('[ac] add custom group failed:', err);
                 if (typeof showUpdateNotification === 'function') {
                     showUpdateNotification('❌ Не удалось добавить группу (проверьте формат)');
                 }
             }
         }
+    });
+
+    // Перерисовка по событиям загрузки справочника.
+    document.addEventListener('ezh:groups-loaded', () => {
+        if (dropdown.style.display === 'block') render();
+    });
+    document.addEventListener('ezh:groups-load-failed', () => {
+        if (dropdown.style.display === 'block') render();
     });
 
     window.addEventListener('scroll', () => {
