@@ -6,6 +6,14 @@
 //   • Кэш lowercase-версий всех групп (allGroupsLower). Убирает 500+
 //     .toLowerCase() на каждый символ. Инвалидируется автоматически
 //     при изменении длины allGroups.
+//
+// UX:
+//   • Пока allGroups пуст и groupsLoaded === false — показываем
+//     «⏳ Загрузка справочника…» вместо «Ничего не найдено».
+//   • Под списком — счётчик «Всего групп: N».
+//   • Если точного совпадения нет — двухстрочная кнопка «➕ Создать
+//     группу «XYZ» / Не найдена в справочнике — добавьте в свою базу».
+//   • Ошибки apiAddCustomGroup показываются пользователю.
 
 const _AC_DEBOUNCE_MS = 80;
 
@@ -19,8 +27,18 @@ function _getAllGroupsLower() {
     return _allGroupsLowerCache;
 }
 
+function _acIsLoading() {
+    // groupsLoaded объявлена в state.js; проверяем через typeof на случай,
+    // если autocomplete.js подключён раньше state.js (не должно быть, но).
+    return (typeof groupsLoaded !== 'undefined') && !groupsLoaded && allGroups.length === 0;
+}
+
 function initGroupAutocomplete(input) {
     if (!input) return;
+
+    // Защита от повторной инициализации того же input
+    if (input.dataset.acInit === '1') return;
+    input.dataset.acInit = '1';
 
     let dropdown = document.createElement('div');
     dropdown.className = 'autocomplete-list';
@@ -35,7 +53,7 @@ function initGroupAutocomplete(input) {
         dropdown.style.width = Math.max(rect.width, 280) + 'px';
     }
     function hide() { dropdown.style.display = 'none'; currentFocus = -1; }
-    function getItems() { return dropdown.querySelectorAll('.autocomplete-item:not(.autocomplete-empty)'); }
+    function getItems() { return dropdown.querySelectorAll('.autocomplete-item:not(.autocomplete-empty):not(.autocomplete-footer)'); }
     function updateActive() {
         let items = getItems();
         items.forEach((it, i) => it.classList.toggle('active', i === currentFocus));
@@ -43,6 +61,17 @@ function initGroupAutocomplete(input) {
     }
 
     function render() {
+        // ── 1. Состояние загрузки ─────────────────────────────
+        if (_acIsLoading()) {
+            dropdown.innerHTML =
+                '<div class="autocomplete-item autocomplete-empty">⏳ Загрузка справочника групп…</div>';
+            positionDropdown();
+            dropdown.style.display = 'block';
+            currentFocus = -1;
+            return;
+        }
+
+        // ── 2. Поиск ──────────────────────────────────────────
         let query = input.value.trim();
         let lower = query.toLowerCase();
         let matches = [];
@@ -50,8 +79,6 @@ function initGroupAutocomplete(input) {
         if (!lower) {
             matches = allGroups.slice(0, 40);
         } else {
-            // Используем кэш lowercase-строк: 500 .toLowerCase() в горячем
-            // пути заменены на 500 прямых сравнений.
             const lowerAll = _getAllGroupsLower();
             let starts = [], contains = [];
             for (let i = 0; i < allGroups.length; i++) {
@@ -63,18 +90,33 @@ function initGroupAutocomplete(input) {
         }
         let exact = lower && _getAllGroupsLower().indexOf(lower) !== -1;
 
+        // ── 3. Сборка HTML ────────────────────────────────────
         let html = '';
+
         if (matches.length === 0 && !query) {
             html = '<div class="autocomplete-item autocomplete-empty">Справочник групп пуст</div>';
         } else if (matches.length === 0) {
-            html = '<div class="autocomplete-item autocomplete-empty">Ничего не найдено</div>';
+            html = '<div class="autocomplete-item autocomplete-empty">В справочнике ничего не найдено</div>';
         } else {
             matches.forEach(g => {
                 html += `<div class="autocomplete-item" data-value="${escapeAttr(g)}">${highlightMatch(g, query)}</div>`;
             });
         }
+
+        // Кнопка «создать свою группу» — если запрос непустой и нет
+        // точного совпадения. Показываем даже если есть частичные
+        // совпадения (юзер мог искать «свою» группу с другим написанием).
         if (query && !exact) {
-            html += `<div class="autocomplete-item autocomplete-add" data-add="${escapeAttr(query)}">➕ Добавить группу «${escapeHtml(query)}»</div>`;
+            html += `
+                <div class="autocomplete-item autocomplete-add" data-add="${escapeAttr(query)}">
+                    <div class="autocomplete-add-title">➕ Создать группу «${escapeHtml(query)}»</div>
+                    <div class="autocomplete-add-hint">Не найдена в справочнике — добавьте в свою базу</div>
+                </div>`;
+        }
+
+        // Счётчик под списком
+        if (allGroups.length > 0) {
+            html += `<div class="autocomplete-footer">Всего групп в справочнике: ${allGroups.length}</div>`;
         }
 
         dropdown.innerHTML = html;
@@ -125,16 +167,20 @@ function initGroupAutocomplete(input) {
         if (!item) return;
         e.preventDefault();
         e.stopPropagation();
+
         if (item.dataset.value) {
             input.value = item.dataset.value;
             hide();
             input.dispatchEvent(new Event('change', { bubbles: true }));
-        } else if (item.dataset.add) {
+            return;
+        }
+
+        if (item.dataset.add) {
             let name = item.dataset.add.trim();
             if (!name) return;
             try {
                 let data = await apiAddCustomGroup(name);
-                if (data.success) {
+                if (data && data.success) {
                     if (!validGroups.has(name.toUpperCase())) {
                         validGroups.add(name.toUpperCase());
                         allGroups.push(name);
@@ -143,8 +189,20 @@ function initGroupAutocomplete(input) {
                     input.value = name;
                     hide();
                     input.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (typeof showUpdateNotification === 'function') {
+                        showUpdateNotification(`✅ Группа «${name}» добавлена`);
+                    }
+                } else if (data && data.error) {
+                    if (typeof showUpdateNotification === 'function') {
+                        showUpdateNotification(`❌ ${data.error}`);
+                    }
                 }
-            } catch (err) { console.error(err); }
+            } catch (err) {
+                console.error('[autocomplete] add custom group failed:', err);
+                if (typeof showUpdateNotification === 'function') {
+                    showUpdateNotification('❌ Не удалось добавить группу (проверьте формат)');
+                }
+            }
         }
     });
 
