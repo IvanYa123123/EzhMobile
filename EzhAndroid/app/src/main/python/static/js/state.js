@@ -18,6 +18,7 @@ let currentSubjectsList = [];
 let validGroups = new Set();
 let allGroups = [];
 let groupsLoaded = false;
+let groupsLoadFailed = false;
 
 // FIX (#4): безопасный JSON.parse. Если в localStorage лежит мусор
 // (старый формат, ручная правка), прежний код падал с SyntaxError
