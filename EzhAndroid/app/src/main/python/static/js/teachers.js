@@ -1,7 +1,6 @@
 // Расписание преподавателей.
 //
-// FIX (medium): все fetch() заменены на _fetchWithTimeout(...) из api.js.
-// Раньше зависший СевГУ держал UI на лоадере до TCP-таймаута ОС.
+// Сетевые вызовы — через _fetchWithTimeout из api.js (таймаут 30 с).
 
 let teachersAllList = null;
 let trackedTeachers = [];

@@ -7,10 +7,7 @@ from datetime import datetime, timedelta
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# FIX (#6, medium): в Chaquopy при отсутствии консоли sys.stdout
-# может быть None. Раньше planner.py использовал голый print(),
-# что давало AttributeError на Android. Здесь тот же паттерн,
-# что в app.py::_safe_print.
+# В Chaquopy sys.stdout может быть None (нет консоли).
 def _safe_print(*args, **kwargs):
     try:
         if sys.stdout is not None:
@@ -164,7 +161,7 @@ class SevSUPlanner:
                     template_to_use = even_template
                     template_week = even_template_week
 
-                if template_to_use:
+                if template_to_use and template_week is not None:
                     diff_weeks = week - template_week
 
                     for item in template_to_use:

@@ -218,7 +218,9 @@ async function fetchSemesterData() {
 
 async function syncSemesterData(group, subgroup) {
     try {
-        let newData = applyTimeFix(await apiSyncSchedule(group, subgroup));
+        const syncResult = await apiSyncSchedule(group, subgroup);
+        let newData = applyTimeFix(syncResult.items);
+        const exhausted = !!syncResult.exhausted;
 
         if (!Array.isArray(newData) || newData.length === 0) {
             if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
@@ -231,7 +233,7 @@ async function syncSemesterData(group, subgroup) {
             return;
         }
 
-        if (typeof saveSyncTime === 'function') saveSyncTime(group, subgroup);
+        if (!exhausted && typeof saveSyncTime === 'function') saveSyncTime(group, subgroup);
 
         if (isScheduleDifferent(newData, cachedSchedule)) {
             cachedSchedule = newData;
@@ -240,7 +242,9 @@ async function syncSemesterData(group, subgroup) {
             updateScheduleStatus();
             refreshNotifications();
             if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
-            showUpdateNotification("Ваше расписание обновлено в фоне");
+            showUpdateNotification(exhausted
+                ? "Расписание загружено частично — остальное догрузится позже"
+                : "Ваше расписание обновлено в фоне");
         }
 
         if (typeof renderSyncFreshness === 'function') renderSyncFreshness();

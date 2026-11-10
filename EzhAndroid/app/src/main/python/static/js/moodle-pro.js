@@ -10,6 +10,7 @@
 
 let moodleStats = [];
 let moodleStatsTimestamp = 0;
+let moodleStatsWarnings = [];
 let moodleSemesterConfig = JSON.parse(localStorage.getItem('moodleSemesterConfig') || '{}');
 let proSubjectChart = null;
 let isMoodleRefreshing = false;
@@ -233,6 +234,7 @@ async function doMoodleLogin() {
 async function doMoodleLogout(forced = false) {
     if (!forced && !confirm('Выйти из аккаунта Moodle?')) return;
     await apiPost('/api/moodle/logout', {});
+    moodleStatsWarnings = [];
     showMoodleLoginView();
     setProMode(false);
     sessionStorage.removeItem('moodle_bg_refreshed');
@@ -325,6 +327,7 @@ async function loadMoodleStats(force = false, isBackground = false) {
 
         moodleStats = resp.data || [];
         moodleStatsTimestamp = resp.timestamp || 0;
+        moodleStatsWarnings = Array.isArray(resp.warnings) ? resp.warnings : [];
 
         window.hasLoadedMoodleStats = true;
         if (typeof applyWidgetVisibility === 'function') applyWidgetVisibility();
@@ -371,16 +374,24 @@ function isCourseInCurrentSchedule(courseName, courseId) {
     });
 }
 
+function _moodleWarningsHtml() {
+    if (!moodleStatsWarnings.length) return '';
+    return '<div class="alert alert-warning py-2 small mb-3">⚠️ Данные загружены не полностью:'
+        + moodleStatsWarnings.map(w => `<div>• ${escapeHtml(w)}</div>`).join('')
+        + '</div>';
+}
+
 function renderMoodleStats() {
     const container = document.getElementById('moodleStatsContent');
     if (!moodleStats || moodleStats.length === 0) {
-        if (container) container.innerHTML = '<div class="text-muted text-center py-3">Нет данных о курсах.</div>';
+        if (container) container.innerHTML = _moodleWarningsHtml()
+            + '<div class="text-muted text-center py-3">Нет данных о курсах.</div>';
         return;
     }
 
     let currentCourses = moodleStats.filter(c => isCourseInCurrentSchedule(c.name, c.id));
 
-    let html = `
+    let html = _moodleWarningsHtml() + `
         <div class="d-flex justify-content-between align-items-center mb-3 p-2 bg-light rounded shadow-sm flex-wrap gap-2">
             <div class="small fw-bold text-muted">Показаны предметы текущего семестра (${currentCourses.length})</div>
             <div class="d-flex gap-2">

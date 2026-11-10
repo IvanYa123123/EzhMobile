@@ -21,9 +21,6 @@
 
         if (tab === 'day') {
             if (!window.expandedDayDateStr) {
-                // FIX (minor): раньше new Date(today.setDate(...)) мутировал
-                // today. Сейчас безопасно (today больше не используется),
-                // но это мина замедленного действия. Считаем monday отдельно.
                 const today = new Date();
                 const monday = new Date(today);
                 monday.setDate(monday.getDate() - (monday.getDay() === 0 ? 6 : monday.getDay() - 1));

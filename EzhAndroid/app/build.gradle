@@ -137,15 +137,42 @@ def vendorAssets = [
     'src/main/python/static/vendor/bootstrap.bundle.min.js',
     'src/main/python/static/vendor/chart.umd.min.js',
     'src/main/python/static/fonts/inter-variable.woff2',
+    'src/main/python/static/js/app.bundle.js',
 ]
+
+// index.html подключает один app.bundle.js вместо 30 модулей.
+// Пакет пересобирается на каждой сборке APK; в репозитории лежит и готовая
+// копия, чтобы `python app.py` работал без gradle.
+tasks.register('buildJsBundle') {
+    group = 'build'
+    description = 'Собирает static/js/app.bundle.js из модулей интерфейса.'
+    doLast {
+        def script = new File(rootProject.projectDir.parentFile, 'scripts/build_js_bundle.py')
+        def baseDir = rootProject.projectDir.parentFile
+        def interpreters = [['python3'], ['python'], ['py', '-3.11']]
+        for (cmd in interpreters) {
+            try {
+                exec {
+                    commandLine(cmd + [script.absolutePath])
+                    workingDir baseDir
+                }
+                return
+            } catch (Exception ignored) {
+                // пробуем следующий интерпретатор
+            }
+        }
+        logger.warn('Python не найден — используется уже собранный static/js/app.bundle.js')
+    }
+}
 
 tasks.register('checkVendorAssets') {
     group = 'verification'
     description = 'Проверяет наличие vendor-ассетов до сборки APK.'
+    dependsOn 'buildJsBundle'
     doLast {
         def missing = vendorAssets.findAll { !file(it).exists() }
         if (!missing.isEmpty()) {
-            throw new GradleException(
+            throw new org.gradle.api.GradleException(
                 'Отсутствуют vendor-ассеты:\n  ' + missing.join('\n  ') +
                 '\n\nВыполните из корня репозитория:\n' +
                 '  python scripts/fetch_vendor_assets.py\n' +

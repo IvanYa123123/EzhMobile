@@ -29,11 +29,14 @@ async function manualRefresh() {
     try {
         // --- 1. Форсим sync с сервера ---
         setLoaderText('📡 Запрашиваем расписание (может занять 5–15 сек)...');
-        const fresh = await apiSyncScheduleForce(group, subgroup);
+        const syncResult = await apiSyncScheduleForce(group, subgroup);
+        const fresh = syncResult.items;
+        const exhausted = !!syncResult.exhausted;
 
         if (Array.isArray(fresh) && fresh.length > 0) {
             cachedSchedule = applyTimeFix(fresh);
-            if (typeof saveSyncTime === 'function') saveSyncTime(group, subgroup);
+            // Частичную загрузку не записываем в sync-время (п.11 §11).
+            if (!exhausted && typeof saveSyncTime === 'function') saveSyncTime(group, subgroup);
         } else {
             setLoaderText('📦 Загружаем из локального кэша...');
             const fallback = await apiLoadSchedule(group, subgroup);
@@ -69,7 +72,9 @@ async function manualRefresh() {
         if (typeof renderSyncFreshness === 'function') renderSyncFreshness();
 
         const count = Array.isArray(cachedSchedule) ? cachedSchedule.length : 0;
-        showUpdateNotification(`✅ Расписание обновлено (${count} пар)`);
+        showUpdateNotification(exhausted
+            ? `⚠️ Расписание загружено частично (${count} пар) — попробуйте обновить ещё раз`
+            : `✅ Расписание обновлено (${count} пар)`);
 
     } catch (e) {
         console.error('[refresh] ERROR:', e);

@@ -1,8 +1,4 @@
-// FIX (#1, critical): в mobile.js и calendar.js используется
-// window.expandedDayDateStr, а здесь была `let`. `let` в классическом
-// скрипте НЕ создаёт свойство на window — это два разных слота.
-// Теперь `var` → window.expandedDayDateStr === expandedDayDateStr.
-// Один и тот же слот, обе записи работают.
+// `var`, а не `let`: mobile.js и calendar.js читают window.expandedDayDateStr.
 var expandedDayDateStr = null;
 
 let currentBaseDate = new Date();
@@ -20,10 +16,7 @@ let allGroups = [];
 let groupsLoaded = false;
 let groupsLoadFailed = false;
 
-// FIX (#4): безопасный JSON.parse. Если в localStorage лежит мусор
-// (старый формат, ручная правка), прежний код падал с SyntaxError
-// на этапе загрузки скрипта — и всё нижеследующее (state.js, main.js)
-// шло лесом.
+// JSON.parse в try/catch: битый localStorage не должен ронять загрузку скриптов.
 function _safeParse(raw, fallback) {
     if (raw == null) return fallback;
     try {
@@ -39,9 +32,6 @@ let friendsSchedules = {};
 let draggingFriendId = null;
 let editingFriendId = null;
 let draggingDropdownFriendId = null;
-// FIX (#11): visibleFriends / saveVisibleFriends были объявлены,
-// но нигде не читались — дед-код, убран. customCategories — используется,
-// оставляем с безопасным парсингом.
 let customCategories = _safeParse(localStorage.getItem('customCategories'), []);
 if (!Array.isArray(customCategories)) customCategories = [];
 
@@ -88,9 +78,6 @@ let showWidgetMiniCal = localStorage.getItem('showWidgetMiniCal') !== 'false';
 let showWidgetGlobal  = localStorage.getItem('showWidgetGlobal')  !== 'false';
 let showWidgetLabs    = localStorage.getItem('showWidgetLabs')    !== 'false';
 let showWidgetPacing  = localStorage.getItem('showWidgetPacing')  !== 'false';
-// FIX (#11): showWidgetNotes заменена на showWidgetNotes1/2/3, старая
-// переменная нигде не читалась — удалена.
-
 // Флаги для виджетов, чьи JS-файлы не входят в базовую сборку.
 let showWidgetSuggestions = localStorage.getItem('showWidgetSuggestions') !== 'false';
 let showWidgetLabsPro     = localStorage.getItem('showWidgetLabsPro')     !== 'false';
@@ -260,12 +247,7 @@ function onNotesWidgetInput(el) {
     } catch (e) {}
 }
 
-// ============================================================
-//  FIX (#11): _getVerticalDate / _setVerticalDate /
-//  verticalDayPrev / verticalDayNext / _rerenderSections
-//  удалены — они нигде не вызывались. _verticalDayOffset оставлен:
-//  weeks.js (jumpToWeek/goToToday/changeWeek) сбрасывает его в null.
-// ============================================================
+//  ПРОКРУТКА: _verticalDayOffset сбрасывает weeks.js
 
 let _verticalDayOffset = null;
 
@@ -385,9 +367,7 @@ function _renderMiniCalRow(item) {
 //  DRAG & DROP ВИДЖЕТОВ
 // ============================================================
 
-// FIX (previous review, critical): в index.html виджеты лежат в
-// #desktopRightWidgetsZone, а не в #rightWidgetsZone. Без этого
-// первая зона не была зарегистрирована и drag на десктопе был мёртв.
+// Десктопная зона виджетов называется desktopRightWidgetsZone (см. index.html).
 const _widgetZoneIds = [
     'desktopRightWidgetsZone',
     'rightWidgetsZone',

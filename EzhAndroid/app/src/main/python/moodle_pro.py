@@ -71,6 +71,30 @@ def _safe_print(*args, **kwargs):
         pass
 
 
+def _write_private_json(path, payload):
+    """Пишет JSON атомарно и с правами 0600.
+
+    Куки Moodle — это фактически пароль от учётной записи, поэтому файл не
+    должен быть читаем другим процессам (п.3 §11).
+    """
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def _log_error(context, extra='', exc=None):
     try:
         ts = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -81,6 +105,10 @@ def _log_error(context, extra='', exc=None):
             if exc is not None:
                 f.write(f"  {type(exc).__name__}: {exc}\n")
                 f.write(traceback.format_exc())
+        try:
+            os.chmod(ERROR_LOG_FILE, 0o600)
+        except OSError:
+            pass
     except OSError:
         pass
 
@@ -172,7 +200,7 @@ def _parse_gradebook_bs4(html):
         link = tr.find('a', href=re.compile(r'/mod/assign/view\.php\?id=\d+'))
         if not link:
             continue
-        m = re.search(r'id=(\d+)', link['href'])
+        m = re.search(r'id=(\d+)', str(link['href']))
         if not m:
             continue
         aid = m.group(1)
@@ -317,8 +345,7 @@ def login():
             return jsonify({"error": "Неверный логин или пароль"}), 401
 
         cookies = {c.name: c.value for c in session.cookies}
-        with open(COOKIES_FILE, "w", encoding="utf-8") as f:
-            json.dump(cookies, f)
+        _write_private_json(COOKIES_FILE, cookies)
 
         if os.path.exists(CACHE_FILE):
             os.remove(CACHE_FILE)
@@ -361,14 +388,22 @@ def get_stats():
             _log_error("failed to read stats cache", exc=e)
 
     if not force and cached_data:
-        return jsonify({"data": cached_data.get("data", []), "timestamp": cached_data.get("timestamp", 0)})
+        return jsonify({"data": cached_data.get("data", []),
+                        "timestamp": cached_data.get("timestamp", 0),
+                        "warnings": cached_data.get("warnings", []),
+                        "incomplete": bool(cached_data.get("warnings"))})
 
     if not _scrape_lock.acquire(blocking=False):
         if cached_data:
-            return jsonify({"data": cached_data.get("data", []), "timestamp": cached_data.get("timestamp", 0)})
+            return jsonify({"data": cached_data.get("data", []),
+                            "timestamp": cached_data.get("timestamp", 0),
+                            "warnings": cached_data.get("warnings", []),
+                            "incomplete": bool(cached_data.get("warnings"))})
         return jsonify({"error": "Обновление уже выполняется, подождите"}), 429
 
     _cancel_scrape = False
+    # Причины неполной загрузки: их видит пользователь, а не только лог (п.6 §11).
+    warnings = []
 
     try:
         session = _get_session()
@@ -398,6 +433,7 @@ def get_stats():
                         courses.append({"id": str(c['id']), "name": c['fullname']})
             except Exception as e:
                 _log_error("stats: AJAX course list failed", exc=e)
+                warnings.append("Список курсов получен запасным способом — часть данных может отсутствовать.")
 
         if not courses:
             course_pattern = re.compile(
@@ -413,7 +449,9 @@ def get_stats():
                     courses.append({"id": cid, "name": name})
 
         if not courses:
-            return jsonify({"data": [], "timestamp": time.time()})
+            warnings.append("Не удалось получить список курсов Moodle — возможно, изменилась вёрстка.")
+            return jsonify({"data": [], "timestamp": time.time(),
+                            "warnings": warnings, "incomplete": True})
 
         # --- 2. Дедлайны из Календаря ---
         calendar_deadlines = {}
@@ -441,12 +479,17 @@ def get_stats():
                                 }
             except Exception as e:
                 _log_error("stats: Calendar API failed", exc=e)
+                warnings.append("Дедлайны не загружены: календарь Moodle недоступен.")
 
         # --- 3. Ведомость оценок ---
         gradebook_data = {}
         r_grade = session.get(f"{MOODLE_URL}/grade/report/overview/index.php", timeout=20)
-        if "auth.sevsu.ru" not in r_grade.url:
+        if "auth.sevsu.ru" in r_grade.url:
+            warnings.append("Оценки не загружены: сессия Moodle истекла.")
+        else:
             gradebook_data = _parse_gradebook(r_grade.text)
+            if not gradebook_data and "/mod/assign/view.php" in r_grade.text:
+                warnings.append("Ведомость оценок не распознана — возможно, изменилась вёрстка Moodle.")
 
         # --- 4. Гибридный сбор ---
         result = []
@@ -461,6 +504,8 @@ def get_stats():
             if _cancel_scrape:
                 return jsonify({"error": "Cancelled"}), 499
             if "auth.sevsu.ru" in cr.url:
+                if "Часть курсов не удалось загрузить: сессия Moodle истекла." not in warnings:
+                    warnings.append("Часть курсов не удалось загрузить: сессия Moodle истекла.")
                 continue
 
             act_pattern = re.compile(
@@ -549,12 +594,13 @@ def get_stats():
         # --- 5. Кэш ---
         ts = time.time()
         try:
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"timestamp": ts, "data": result}, f, ensure_ascii=False)
+            _write_private_json(CACHE_FILE, {"timestamp": ts, "data": result,
+                                             "warnings": warnings})
         except Exception as e:
             _log_error("stats: failed to write cache", exc=e)
 
-        return jsonify({"data": result, "timestamp": ts})
+        return jsonify({"data": result, "timestamp": ts,
+                        "warnings": warnings, "incomplete": bool(warnings)})
 
     except Exception as e:
         _log_error("stats: unhandled exception", exc=e)

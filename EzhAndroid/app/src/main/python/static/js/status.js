@@ -52,11 +52,7 @@ function updateScheduleStatus() {
     let nowMs = _nowMs();
     let todayStr = getLocalDateStr(now);
 
-    // FIX (#2, critical): раньше при пустом/кривом time_range
-    // (planner.py подставляет "" для неизвестного n) падало на
-    // _timeToMs(undefined) → TypeError, ломалось всё, что вызывает
-    // updateScheduleStatus (а это таймер). Теперь безопасно парсим
-    // и отсеиваем записи без валидного времени.
+    // Записи без валидного time_range отсеиваем: _timeToMs(undefined) даст NaN.
     let todayPairs = cachedSchedule
         .filter(item => item.date === todayStr)
         .map(item => {

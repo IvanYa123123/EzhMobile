@@ -7,7 +7,7 @@ import requests
 import urllib3
 import certifi
 
-from teacher_parser import parse_teachers_list, parse_ics_schedule
+from teacher_parser import parse_teachers_list, parse_ics_schedule, is_person_name
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -70,9 +70,9 @@ class SevSUTeacherPlanner:
             if cached and not force:
                 age = time.time() - cached.get('updated_at', 0)
                 if age < TEACHERS_LIST_TTL:
-                    return cached.get('items', [])
+                    return self._clean_teachers(cached.get('items', []))
 
-        items = self._fetch_teachers_from_site()
+        items = self._clean_teachers(self._fetch_teachers_from_site())
         if items:
             with self._lock:
                 self._write_teachers_cache(items)
@@ -80,7 +80,7 @@ class SevSUTeacherPlanner:
 
         with self._lock:
             cached = self._read_teachers_cache()
-            return cached.get('items', []) if cached else []
+            return self._clean_teachers(cached.get('items', [])) if cached else []
 
     def _fetch_teachers_from_site(self) -> list:
         try:
@@ -94,6 +94,11 @@ class SevSUTeacherPlanner:
             print(f'[teachers] fetch failed: {e}', flush=True)
             return []
 
+    def _clean_teachers(self, items: list) -> list:
+        """Отбрасывает строки-не-люди («Вакансия УПП», «0 - ОМР») из кэша."""
+        return [it for it in items
+                if isinstance(it, dict) and it.get('slug') and is_person_name(it.get('name', ''))]
+
     def _read_teachers_cache(self):
         try:
             with open(self.teachers_json, 'r', encoding='utf-8') as f:
@@ -102,6 +107,7 @@ class SevSUTeacherPlanner:
             return None
 
     def _write_teachers_cache(self, items: list):
+        items = self._clean_teachers(items)
         try:
             tmp = self.teachers_json + '.tmp'
             with open(tmp, 'w', encoding='utf-8') as f:
@@ -169,14 +175,8 @@ class SevSUTeacherPlanner:
         if not schedule:
             return None
 
-        # FIX (previous review): отсутствие .meta.json → age = inf,
-        # иначе кэш «вечно свежий».
-        # FIX (#9, medium): если updated_at в .meta.json — не число
-        # (строка/None), то time.time() - "abc" бросал TypeError,
-        # который except (OSError, JSONDecodeError) НЕ ловил —
-        # исключение пролетало вверх и get_teacher_schedule
-        # возвращал пусто на каждый запрос. Теперь коэрцируем к float
-        # и ловим TypeError отдельно.
+        # Без .meta.json кэш считается устаревшим; updated_at может быть
+        # не числом — коэрцируем к float и ловим TypeError отдельно.
         age = float('inf')
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:

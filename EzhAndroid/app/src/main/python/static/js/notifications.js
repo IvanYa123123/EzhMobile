@@ -3,10 +3,8 @@
 // Android: нативный мост EzhNative (AlarmManager + NotificationReceiver).
 // Браузер: Web Notifications.
 //
-// FIX (#5, medium): раньше _notifiedMap был только in-memory Map.
-// При перезагрузке страницы в web-режиме он пустел и _fireNotification
-// срабатывал повторно для всех пар/событий в окне [notifyMs, startMs).
-// Теперь карта персистится в localStorage и восстанавливается при init.
+// _notifiedMap персистится в localStorage: иначе после reload в web-режиме
+// уведомления по уже отправленным парам приходят повторно.
 
 let _notificationCheckInterval = null;
 let _notifiedMap = new Map();
@@ -208,8 +206,6 @@ function refreshNotifications() {
         advanceMs,
         NOTIFICATION_MAX_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
 
-    // FIX (#5): теперь чистим и сохраняем в localStorage одной функцией,
-    // чтобы переживало reload.
     _pruneAndPersistNotifiedMap(nowMs);
 
     if (typeof cachedSchedule !== 'undefined' && Array.isArray(cachedSchedule)) {

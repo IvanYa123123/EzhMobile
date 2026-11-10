@@ -53,7 +53,7 @@ def _parse_teachers_bs4(html: str) -> list:
     seen = set()
 
     for a in soup.find_all('a', href=True):
-        href = a['href']
+        href = str(a['href'])
         m = _SLUG_RE.match(href)
         if not m:
             continue
@@ -61,11 +61,9 @@ def _parse_teachers_bs4(html: str) -> list:
         if slug in seen:
             continue
 
-        # Идём вверх вручную до ближайшего li/div/tr/article, но не глубже
-        # 5 уровней. Раньше здесь был a.find_parent([...], limit=5) —
-        # в bs4 4.12 параметр limit уходит в find_parents и означает
-        # «максимум результатов», а не «глубину». Поведение на разных
-        # версиях bs4 разное, поэтому переписали явно.
+        # Идём вверх до ближайшего li/div/tr/article, не глубже 5 уровней:
+        # у find_parent(..., limit=5) в bs4 4.12 limit — число результатов,
+        # а не глубина, поэтому обход ручной.
         name = ''
         parent = None
         cur = a.parent
@@ -99,6 +97,8 @@ def _parse_teachers_bs4(html: str) -> list:
             continue
         if _looks_like_button_text(name):
             continue
+        if not is_person_name(name):
+            continue
 
         seen.add(slug)
         result.append({'name': name, 'slug': slug})
@@ -108,6 +108,24 @@ def _parse_teachers_bs4(html: str) -> list:
 def _looks_like_button_text(text: str) -> bool:
     low = text.lower().strip(' :.-—')
     return low in ('открыть расписание', 'открыть', 'расписание', 'показать')
+
+# Фамилия/имя/отчество: слово с заглавной и хотя бы двумя строчными после неё.
+# Строки вида «0 - ОМР», «Вакансия УПП», «5 - доц - ОМР» под шаблон не подходят,
+# а «2 - доц - внеш - Исаев» подходит — настоящих преподавателей не теряем.
+_TITLE_RE = re.compile(r'^[А-ЯЁ][а-яё]{2,}(?:-[А-ЯЁ][а-яё]{2,})?$')
+_NON_NAME_WORDS = {
+    'вакансия', 'доц', 'внеш', 'внутр', 'внут', 'омр', 'итс', 'сиз', 'асс',
+    'преп', 'ставка', 'кафедра', 'ппс', 'ууп', 'снк',
+}
+
+def is_person_name(name: str) -> bool:
+    """Есть ли в строке хотя бы одно слово, похожее на ФИО (п.10 §11)."""
+    for word in re.findall(r'[А-ЯЁа-яё\-]+', name or ''):
+        if word.lower() in _NON_NAME_WORDS:
+            continue
+        if _TITLE_RE.match(word):
+            return True
+    return False
 
 def _parse_teachers_regex(html: str) -> list:
     """Резервный парсер без bs4 — по регуляркам."""
@@ -130,7 +148,7 @@ def _parse_teachers_regex(html: str) -> list:
                 break
 
         name = _WS_RE.sub(' ', name).strip()
-        if name and len(name) >= 3:
+        if name and len(name) >= 3 and is_person_name(name):
             seen.add(slug)
             result.append({'name': name, 'slug': slug})
 

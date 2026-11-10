@@ -55,6 +55,22 @@ EzhAndroid/app/src/main/python/static/fonts/inter-variable.woff2
 вешается на `preBuild` и валит сборку с внятным сообщением, если файлов нет.
 Так что забыть невозможно.
 
+### 2.1. Бандл интерфейса
+
+`static/index.html` подключает один файл `static/js/app.bundle.js` вместо
+30 отдельных модулей — меньше запросов на холодном старте.
+
+```bash
+cd EzhMobile
+python scripts/build_js_bundle.py
+```
+
+Задача `buildJsBundle` в `app/build.gradle` собирает пакет автоматически
+перед сборкой APK. Готовая копия `app.bundle.js` лежит в репозитории, поэтому
+`python app.py` работает без gradle; но после правки любого
+`static/js/*.js` пакет нужно пересобрать, иначе WebView останется на старом
+коде.
+
 ---
 
 ## 3. Gradle wrapper

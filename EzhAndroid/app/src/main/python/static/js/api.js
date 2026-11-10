@@ -60,7 +60,13 @@ async function apiDelete(url) {
 async function apiLoadGroups()            { return apiGet('/api/groups'); }
 async function apiAddCustomGroup(name)    { return apiPost('/api/groups/custom', {name}); }
 async function apiLoadSchedule(group, sg) { return apiGet(`/api/schedule_all?group=${encodeURIComponent(group)}&subgroup=${sg}`); }
-async function apiSyncSchedule(group, sg) { return apiGet(`/api/schedule_sync?group=${encodeURIComponent(group)}&subgroup=${sg}`); }
+async function _fetchScheduleResult(url) {
+    const r = await _fetchWithTimeout(_api(url));
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+    const items = await r.json();
+    return {items, exhausted: r.headers.get('X-Schedule-Exhausted') === '1'};
+}
+async function apiSyncSchedule(group, sg) { return _fetchScheduleResult(`/api/schedule_sync?group=${encodeURIComponent(group)}&subgroup=${sg}`); }
 async function apiLoadLabs(group)         { return apiGet(`/api/labs?group=${encodeURIComponent(group)}`); }
 async function apiSaveLabs(items)         { return apiPost('/api/labs', items); }
 async function apiLoadTasks(start, end)   { return apiGet(`/api/tasks?start=${start}&end=${end}`); }
@@ -79,7 +85,7 @@ async function apiCreateCustomSchedule(x) { return apiPost('/api/custom_schedule
 async function apiUpdateCustomSchedule(id, x) { return apiPut(`/api/custom_schedule/${id}`, x); }
 async function apiDeleteCustomSchedule(id)    { return apiDelete(`/api/custom_schedule/${id}`); }
 async function apiSearch(q)                   { return apiGet(`/api/search?q=${encodeURIComponent(q)}`); }
-async function apiSyncScheduleForce(group, sg){ return apiGet(`/api/schedule_sync?group=${encodeURIComponent(group)}&subgroup=${sg}&force=1`); }
+async function apiSyncScheduleForce(group, sg){ return _fetchScheduleResult(`/api/schedule_sync?group=${encodeURIComponent(group)}&subgroup=${sg}&force=1`); }
 
 async function apiLoadLabItems(group)               { return apiGet(`/api/lab_items?group=${encodeURIComponent(group)}`); }
 async function apiSyncLabItems(group, items)        { return apiPost('/api/lab_items/sync', {group, items}); }

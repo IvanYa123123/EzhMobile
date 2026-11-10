@@ -331,9 +331,7 @@ function _saveTextFile(filename, mime, text) {
     showUpdateNotification('✅ Файл сохранён');
 }
 
-// FIX (medium): все сетевые вызовы ниже раньше шли через голый fetch()
-// без таймаута. Если Flask/СевГУ зависал — лоадер висел минутами до
-// TCP-таймаута ОС. Теперь используем _fetchWithTimeout из api.js (30 с).
+// Сетевые вызовы идут через _fetchWithTimeout из api.js (таймаут 30 с).
 async function downloadICS() {
     const group    = (document.getElementById('groupSelect').value || '').trim();
     const subgroup = document.getElementById('subgroupSelect').value || '0';

@@ -211,9 +211,6 @@ public class EzhBridge {
         } catch (Exception ignored) {}
     }
 
-    @JavascriptInterface
-    public void openApp() {}
-
     // ============================================================
     //  СОХРАНЕНИЕ ФАЙЛА (для .ics и других текстовых артефактов)
     //  На Android 10+ — через MediaStore.Downloads, без permission.
