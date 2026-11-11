@@ -87,6 +87,10 @@ let showWidgetSuggestions = localStorage.getItem('showWidgetSuggestions') !== 'f
 let showWidgetLabsPro     = localStorage.getItem('showWidgetLabsPro')     !== 'false';
 let showWidgetMoodleAvg   = localStorage.getItem('showWidgetMoodleAvg')   !== 'false';
 let showWidgetMoodleSubj  = localStorage.getItem('showWidgetMoodleSubj')  !== 'false';
+// Заметки в колонках дней: settings.js читает эти флаги напрямую.
+let showWidgetNotes1 = localStorage.getItem('showWidgetNotes1') !== 'false';
+let showWidgetNotes2 = localStorage.getItem('showWidgetNotes2') !== 'false';
+let showWidgetNotes3 = localStorage.getItem('showWidgetNotes3') !== 'false';
 
 // Переменная для вкладки "Люди" (friends или teachers)
 let friendsTeachersTab = localStorage.getItem('friendsTeachersTab') || 'friends';
@@ -251,9 +255,7 @@ function onNotesWidgetInput(el) {
     } catch (e) {}
 }
 
-// ============================================================
 //  ПРОКРУТКА: _verticalDayOffset сбрасывает weeks.js
-// ============================================================
 
 let _verticalDayOffset = null;
 
@@ -3295,7 +3297,7 @@ async function saveFriend() {
 }
 
 async function deleteFriend(id) {
-    if (!confirm("Удалить друга?")) return;
+    if (!confirm("Вы действительно хотите удалить друга из списка?")) return;
     try {
         await apiDeleteFriend(id);
         delete friendsSchedules[id];
@@ -3332,7 +3334,7 @@ function renderFriendsCalendar(dir = null) {
     let header = document.createElement('div');
     header.className = "fw-bold text-primary mb-2 ps-1 pt-1 friend-header-row d-flex align-items-center justify-content-between";
     header.innerHTML = `
-        <span>👤 ${escapeHtml(friend.name)} <span class="text-muted small fw-normal ms-1">(${escapeHtml(friend.group)})</span></span>
+        <span>👤 ${escapeHtml(friend.name)} <span class="text-muted small fw-normal ms-1">(${escapeHtml(friend.group)}${friend.subgroup && friend.subgroup !== '0' ? ', подгр. ' + escapeHtml(String(friend.subgroup)) : ', все подгруппы'})</span></span>
         <div class="d-flex align-items-center gap-1">
             <span class="text-muted small me-1">${_currentFriendIndex + 1} / ${friendsList.length}</span>
             <button class="btn btn-sm btn-link text-secondary p-0 text-decoration-none" style="width: 20px;" title="Выше" onclick="moveFriendUp()" ${isFirst ? 'disabled' : ''}>↑</button>
@@ -7846,6 +7848,18 @@ function resetCustomTheme() {
         document.body.setAttribute("data-mobile-tab", tab);
         try { localStorage.setItem(STORAGE_KEY, tab); } catch (e) {}
         updateNavActive(tab);
+
+        // Уходя из «Дня», снимаем дневной режим: иначе стрелки
+        // «Расписания» продолжают листать по одному дню.
+        if (tab !== 'day' && window.expandedDayDateStr) {
+            window.expandedDayDateStr = null;
+            window._verticalDayOffset = 0;
+            var fullCols = document.querySelectorAll('.day-col.fullscreen-day');
+            for (var f = 0; f < fullCols.length; f++) fullCols[f].classList.remove('fullscreen-day');
+            var calEl = document.getElementById('calendar');
+            if (calEl) calEl.classList.remove('has-fullscreen');
+            if (typeof renderCalendar === 'function' && document.getElementById('calendar')) renderCalendar();
+        }
 
         if (tab === 'day') {
             if (!window.expandedDayDateStr) {

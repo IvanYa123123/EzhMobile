@@ -256,7 +256,7 @@ async function saveFriend() {
 }
 
 async function deleteFriend(id) {
-    if (!confirm("Удалить друга?")) return;
+    if (!confirm("Вы действительно хотите удалить друга из списка?")) return;
     try {
         await apiDeleteFriend(id);
         delete friendsSchedules[id];
@@ -293,7 +293,7 @@ function renderFriendsCalendar(dir = null) {
     let header = document.createElement('div');
     header.className = "fw-bold text-primary mb-2 ps-1 pt-1 friend-header-row d-flex align-items-center justify-content-between";
     header.innerHTML = `
-        <span>👤 ${escapeHtml(friend.name)} <span class="text-muted small fw-normal ms-1">(${escapeHtml(friend.group)})</span></span>
+        <span>👤 ${escapeHtml(friend.name)} <span class="text-muted small fw-normal ms-1">(${escapeHtml(friend.group)}${friend.subgroup && friend.subgroup !== '0' ? ', подгр. ' + escapeHtml(String(friend.subgroup)) : ', все подгруппы'})</span></span>
         <div class="d-flex align-items-center gap-1">
             <span class="text-muted small me-1">${_currentFriendIndex + 1} / ${friendsList.length}</span>
             <button class="btn btn-sm btn-link text-secondary p-0 text-decoration-none" style="width: 20px;" title="Выше" onclick="moveFriendUp()" ${isFirst ? 'disabled' : ''}>↑</button>

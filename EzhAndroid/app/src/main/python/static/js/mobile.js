@@ -19,6 +19,18 @@
         try { localStorage.setItem(STORAGE_KEY, tab); } catch (e) {}
         updateNavActive(tab);
 
+        // Уходя из «Дня», снимаем дневной режим: иначе стрелки
+        // «Расписания» продолжают листать по одному дню.
+        if (tab !== 'day' && window.expandedDayDateStr) {
+            window.expandedDayDateStr = null;
+            window._verticalDayOffset = 0;
+            var fullCols = document.querySelectorAll('.day-col.fullscreen-day');
+            for (var f = 0; f < fullCols.length; f++) fullCols[f].classList.remove('fullscreen-day');
+            var calEl = document.getElementById('calendar');
+            if (calEl) calEl.classList.remove('has-fullscreen');
+            if (typeof renderCalendar === 'function' && document.getElementById('calendar')) renderCalendar();
+        }
+
         if (tab === 'day') {
             if (!window.expandedDayDateStr) {
                 const today = new Date();

@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.webkit.ConsoleMessage;
+import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -24,6 +25,8 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import com.chaquo.python.Python;
 
@@ -183,6 +186,31 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     request.deny();
                 }
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, final JsResult result) {
+                // Без этого WebView показывает системный диалог с заголовком
+                // «Подтвердите действие на http://127.0.0.1».
+                new MaterialAlertDialogBuilder(MainActivity.this)
+                        .setTitle("Подтверждение")
+                        .setMessage(message == null ? "" : message)
+                        .setPositiveButton("Да", (dialog, which) -> result.confirm())
+                        .setNegativeButton("Отмена", (dialog, which) -> result.cancel())
+                        .setOnCancelListener(dialog -> result.cancel())
+                        .show();
+                return true;
+            }
+
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
+                new MaterialAlertDialogBuilder(MainActivity.this)
+                        .setTitle("Сообщение")
+                        .setMessage(message == null ? "" : message)
+                        .setPositiveButton("ОК", (dialog, which) -> result.confirm())
+                        .setOnCancelListener(dialog -> result.cancel())
+                        .show();
+                return true;
             }
 
             @Override

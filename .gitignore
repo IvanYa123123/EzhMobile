@@ -64,6 +64,11 @@ EzhAndroid/app/src/main/python/teacher_schedules/
 EzhAndroid/app/src/main/python/custom_groups.json
 EzhAndroid/app/src/main/python/.sync_times.json
 
+# Скачиваемые сторонние ассеты интерфейса (scripts/fetch_vendor_assets.py)
+
+EzhAndroid/app/src/main/python/static/vendor/
+EzhAndroid/app/src/main/python/static/fonts/*.woff2
+
 # ---------- Android / Gradle ----------
 
 .gradle/

@@ -83,6 +83,10 @@ let showWidgetSuggestions = localStorage.getItem('showWidgetSuggestions') !== 'f
 let showWidgetLabsPro     = localStorage.getItem('showWidgetLabsPro')     !== 'false';
 let showWidgetMoodleAvg   = localStorage.getItem('showWidgetMoodleAvg')   !== 'false';
 let showWidgetMoodleSubj  = localStorage.getItem('showWidgetMoodleSubj')  !== 'false';
+// Заметки в колонках дней: settings.js читает эти флаги напрямую.
+let showWidgetNotes1 = localStorage.getItem('showWidgetNotes1') !== 'false';
+let showWidgetNotes2 = localStorage.getItem('showWidgetNotes2') !== 'false';
+let showWidgetNotes3 = localStorage.getItem('showWidgetNotes3') !== 'false';
 
 // Переменная для вкладки "Люди" (friends или teachers)
 let friendsTeachersTab = localStorage.getItem('friendsTeachersTab') || 'friends';

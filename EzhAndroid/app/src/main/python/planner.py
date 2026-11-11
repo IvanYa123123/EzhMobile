@@ -118,6 +118,10 @@ class SevSUPlanner:
 
         all_weeks = list(range(1, max_weeks + 1))
         weeks_data, exhausted = self._fetch_weeks_sequential(group_name, all_weeks)
+        # Пропуски внутри известного диапазона догружаем шаблоном чётной/нечётной
+        # недели. За последней неделей, которую сайт реально отдал, ничего не
+        # выдумываем — иначе в календаре появляются пары в новогодние каникулы.
+        last_real_week = max((w for w in all_weeks if weeks_data.get(w)), default=0)
 
         target_is_all = (target_subgroup == "0")
 
@@ -150,7 +154,7 @@ class SevSUPlanner:
                         even_template = processed_week
                         even_template_week = week
                         even_template_len = len(processed_week)
-            else:
+            elif week < last_real_week:
                 template_to_use = None
                 template_week = None
 
