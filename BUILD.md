@@ -9,7 +9,7 @@
 
 | Компонент | Версия | Зачем |
 |---|---|---|
-| JDK | 17 (или 21) | AGP 8.13 / Gradle 8.13 |
+| JDK | 17 (или 21) | AGP 8.2.2 / Gradle 8.13 |
 | Android SDK | Platform 36 + Build-Tools 35+ | `compileSdk 36` |
 | Python | **3.11** (обязательно минорная совпадает с `chaquopy.defaultConfig.version`) | Chaquopy запускает pip на машине сборки |
 | Gradle | не нужен отдельно | берётся wrapper'ом |
@@ -75,26 +75,12 @@ python scripts/build_js_bundle.py
 
 ## 3. Gradle wrapper
 
-`gradle/wrapper/gradle-wrapper.properties` уже на месте и указывает на
-Gradle 8.13. Бинарный `gradle-wrapper.jar` я не генерирую (это файл,
-а не текст) — получите его одним из способов:
+`gradlew`, `gradlew.bat` и `gradle/wrapper/` лежат в репозитории и указывают
+на Gradle 8.13 — ставить Gradle отдельно не нужно. Локальная сборка и CI
+используют один и тот же wrapper, так что версия Gradle всегда совпадает.
 
-**A. Android Studio (проще всего)**
-Открыть папку репозитория → «Sync Project with Gradle Files».
-IDE сама скачает дистрибутив и создаст `gradlew`, `gradlew.bat`,
-`gradle/wrapper/gradle-wrapper.jar`.
-
-**B. Из командной строки** (если Gradle есть в PATH любой версии):
-
-```
-cd EzhMobile
-gradle wrapper --gradle-version 8.13 --distribution-type bin
-```
-
-**C. Скопировать** `gradlew`, `gradlew.bat` и `gradle/wrapper/gradle-wrapper.jar`
-из любого другого Android-проекта (версия в `.properties` уже правильная).
-
-После этого `./gradlew` работает.
+Проверка: `./gradlew --version` (Windows: `gradlew.bat --version`).
+Первый запуск скачает дистрибутив (~130 МБ) в `~/.gradle`.
 
 ---
 
@@ -102,12 +88,59 @@ gradle wrapper --gradle-version 8.13 --distribution-type bin
 
 ```
 cd EzhMobile
-./gradlew assembleDebug
+./gradlew assembleDebug          # debug, для быстрой проверки
+./gradlew assembleRelease        # release, для установки «на себя»
 ```
 
-Windows: `gradlew.bat assembleDebug`.
+Windows: `gradlew.bat assembleDebug` / `gradlew.bat assembleRelease`.
 
-APK: `EzhAndroid/app/build/outputs/apk/debug/app-debug.apk`
+Версию сборки можно переопределить: `./gradlew assembleDebug -PappVersionCode=237`.
+CI передаёт номер прогона, поэтому APK из разных сборок отличаются
+`versionCode` (по умолчанию, без параметра, остаётся 8).
+
+APK:
+
+- debug: `EzhAndroid/app/build/outputs/apk/debug/app-debug.apk`
+- release (подписанный): `EzhAndroid/app/build/outputs/apk/release/app-release.apk`
+
+### 4.1. Подпись release-APK
+
+Android устанавливает обновление только поверх APK с **той же подписью**.
+Поэтому release-сборка в CI подписывается постоянным ключом, который лежит
+в секретах GitHub и не попадает в репозиторий.
+
+Один раз создать keystore (храните файл и пароль в надёжном месте — потеря
+ключа означает, что обновления поверх установленного приложения выпустить
+уже нельзя):
+
+```
+keytool -genkeypair -v -keystore release.jks -alias ezh -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Получить base64 и добавить в Settings → Secrets and variables → Actions:
+
+```
+# Linux/macOS
+base64 -w0 release.jks > release.jks.b64
+
+# Windows PowerShell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('release.jks')) | Set-Content release.jks.b64
+```
+
+| Секрет | Значение |
+|---|---|
+| `KEYSTORE_BASE64` | содержимое `release.jks.b64` одной строкой |
+| `KEYSTORE_PASSWORD` | пароль хранилища |
+| `KEY_ALIAS` | `ezh` |
+| `KEY_PASSWORD` | пароль ключа (обычно совпадает с паролем хранилища) |
+
+CI сам раскладывает keystore из `KEYSTORE_BASE64` во временный файл и
+передаёт Gradle пути через переменные окружения `KEYSTORE_FILE`,
+`KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
+
+Локально можно подписать так же, задав эти четыре переменные перед сборкой;
+без них `assembleRelease` соберёт неподписанный APK
+(`app-release-unsigned.apk`), который не установится.
 
 Первый запуск долгий (5–15 мин): Gradle качает дистрибутив, AGP,
 AndroidX и все pip-пакеты для Python 3.11.

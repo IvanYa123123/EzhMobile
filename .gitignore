@@ -88,6 +88,8 @@ captures/
 *.p12
 keystore.properties
 signing.properties
+*.jks.b64
+*.keystore.b64
 
 # Скомпилированные APK/AAB
 
@@ -150,14 +152,3 @@ Thumbs.db
 *.tmp
 *.orig
 *.rej
-
-```
-
-Кладётся в корень репозитория рядом с `BUILD.md` и `README.md`.
-
-Пара замечаний:
-
-- `gradle-wrapper.jar` **не** игнорируется — по `BUILD.md` его нужно положить в репо вручную (в отличие от остальных `.jar`).
-- `static/` целиком не игнорируется: если вы пока не удалили корневой мусорный дубль, git продолжит его отслеживать. Удалите вручную через `git rm -r static` после того, как убедитесь, что файлы в `EzhAndroid/.../python/static/` на месте.
-- Vendor-ассеты (`python/static/vendor/*`, `python/static/fonts/inter-variable.woff2`) тоже **не** игнорируются — по `BUILD.md` они коммитятся.
-- Если репо уже что-то отслеживает из списка (например, случайно закоммиченный `planner.db`), после добавления `.gitignore` нужно почистить индекс: `git rm --cached <path>`.

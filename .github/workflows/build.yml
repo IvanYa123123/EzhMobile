@@ -5,9 +5,17 @@ on:
   push:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -29,10 +37,8 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;35.0.0'
 
-      - name: Set up Gradle 8.13
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
 
       - name: Fetch vendor assets
         run: python scripts/fetch_vendor_assets.py
@@ -48,12 +54,27 @@ jobs:
           fi
           echo "Все файлы на месте."
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Не задан секрет KEYSTORE_BASE64. См. BUILD.md, раздел 4.1."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Build release APK
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace -PappVersionCode=${{ github.run_number }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: EzhAndroid/app/build/outputs/apk/debug/app-debug.apk
+          name: app-release-${{ github.run_number }}
+          path: EzhAndroid/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
