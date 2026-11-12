@@ -290,6 +290,12 @@ class TrackedTeachersRepo(private val db: Db) {
         }
     }
 
+    fun findBySlug(slug: String): TrackedTeacher? = db.transaction {
+        query("SELECT id, name, slug FROM tracked_teachers WHERE slug = ?", listOf(slug))
+            .firstOrNull()
+            ?.let { TrackedTeacher(it.int("id"), it.str("name"), it.str("slug")) }
+    }
+
     /** null — такой slug уже есть (уникальный индекс). */
     fun insert(name: String, slug: String): Int? = db.transaction {
         val existing = query("SELECT id FROM tracked_teachers WHERE slug = ?", listOf(slug))

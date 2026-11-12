@@ -95,10 +95,10 @@ suspend fun ApplicationCall.respondBody(
     status: HttpStatusCode = HttpStatusCode.OK,
     extraHeaders: Map<String, String> = emptyMap(),
 ) {
+    extraHeaders.forEach { (name, value) -> response.header(name, value) }
     if (!response.headers.contains("Cache-Control")) {
         response.header("Cache-Control", "no-store")
     }
     response.header("Content-Security-Policy", CSP_HEADER)
-    extraHeaders.forEach { (name, value) -> response.header(name, value) }
     respondText(text, contentType, status)
 }

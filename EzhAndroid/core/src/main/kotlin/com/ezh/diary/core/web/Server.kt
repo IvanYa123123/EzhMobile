@@ -7,6 +7,7 @@ import com.ezh.diary.core.web.routes.labsRoutes
 import com.ezh.diary.core.web.routes.miscRoutes
 import com.ezh.diary.core.web.routes.scheduleRoutes
 import com.ezh.diary.core.web.routes.tasksRoutes
+import com.ezh.diary.core.web.routes.teachersRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -46,6 +47,7 @@ fun Application.ezhModule(deps: ApiDeps) {
         miscRoutes(deps)
         backupRoutes(deps)
         scheduleRoutes(deps)
+        teachersRoutes(deps)
     }
 }
 

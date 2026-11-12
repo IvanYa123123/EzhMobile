@@ -16,6 +16,8 @@ class DataFiles(rootDir: File) {
     val schedulesDir: File get() = File(root, "schedules")
     val syncTimesFile: File get() = File(root, ".sync_times.json")
     val customGroupsFile: File get() = File(root, "custom_groups.json")
+    val teachersFile: File get() = File(root, "teachers.json")
+    val teacherSchedulesDir: File get() = File(root, "teacher_schedules")
 
     fun ensure() {
         root.mkdirs()

@@ -6,11 +6,13 @@ import com.ezh.diary.core.db.FriendsRepo
 import com.ezh.diary.core.db.LabsRepo
 import com.ezh.diary.core.db.SubjectsRepo
 import com.ezh.diary.core.db.TasksRepo
+import com.ezh.diary.core.db.TrackedTeachersRepo
 import com.ezh.diary.core.planner.SemesterPlanner
 import com.ezh.diary.core.storage.CustomGroups
 import com.ezh.diary.core.storage.DataFiles
 import com.ezh.diary.core.storage.ScheduleCache
 import com.ezh.diary.core.storage.SyncTimes
+import com.ezh.diary.core.teacher.TeacherService
 
 /**
  * Всё, что нужно маршрутам, в одном месте: база, файлы, планировщик.
@@ -21,6 +23,7 @@ class ApiDeps(
     val db: Db,
     val files: DataFiles,
     val planner: SemesterPlanner,
+    val teacherService: TeacherService,
     val limiter: RateLimiter = RateLimiter(),
     val clock: () -> Long = { System.currentTimeMillis() },
     val log: (String) -> Unit = {},
@@ -30,6 +33,7 @@ class ApiDeps(
     val subjects = SubjectsRepo(db)
     val customSchedule = CustomScheduleRepo(db)
     val labs = LabsRepo(db)
+    val trackedTeachers = TrackedTeachersRepo(db)
     val customGroups = CustomGroups(files.customGroupsFile)
     val syncTimes = SyncTimes(files.syncTimesFile, clock)
     val scheduleCache = ScheduleCache(log)
