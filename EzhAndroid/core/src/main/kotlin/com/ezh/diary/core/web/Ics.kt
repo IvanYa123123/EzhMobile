@@ -32,6 +32,10 @@ object Ics {
 
     fun utcStamp(now: LocalDateTime = LocalDateTime.now(ZoneOffset.UTC)): String = STAMP.format(now)
 
+    /** DTSTAMP из epoch-миллисекунд — чтобы тесты были детерминированными. */
+    fun utcStampAt(epochMillis: Long): String =
+        STAMP.format(LocalDateTime.ofEpochSecond(epochMillis / 1000, 0, ZoneOffset.UTC))
+
     fun fold(line: String, limit: Int = 75): String {
         if (line.isEmpty()) return line
         if (utf8Size(line) <= limit) return line

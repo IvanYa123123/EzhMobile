@@ -19,6 +19,7 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -43,6 +44,7 @@ fun Application.ezhModule(deps: ApiDeps) {
     routing {
         deps.assets?.let { staticRoutes(it) }
         get("/api/health") {
+            call.response.header("Cache-Control", "no-store")
             call.respond(HealthResponse(version = deps.version))
         }
         groupsRoutes(deps)
@@ -58,6 +60,8 @@ fun Application.ezhModule(deps: ApiDeps) {
 
 /** Ошибка API в формате Flask: HTTP-код + `{"error": "текст"}`. */
 suspend fun ApplicationCall.respondError(status: HttpStatusCode, message: String) {
+    // Flask ставил no-store на все ответы, кроме явно кэшируемых.
+    response.header("Cache-Control", "no-store")
     respond(status, ErrorResponse(message))
 }
 

@@ -105,6 +105,7 @@ fun newDeps(
     assets: StaticAssets? = null,
     bundles: Bundles = Bundles.Empty,
     groupsApi: GroupsApi? = null,
+    clock: () -> Long = { System.currentTimeMillis() },
 ): ApiDeps {
     val dir = createTempDirectory("ezh-api-test").toFile()
     val db = JdbcDb("jdbc:sqlite:" + File(dir, "planner.db").absolutePath)
@@ -126,5 +127,6 @@ fun newDeps(
         assets = assets,
         bundles = bundles,
         groupsApi = groupsApi,
+        clock = clock,
     )
 }

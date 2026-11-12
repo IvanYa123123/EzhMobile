@@ -43,6 +43,12 @@ SQLite через JDBC.
   разбор ICS (600 пар, сортировка, поля), кэш и офлайн-поведение.
 - **Moodle**: логин/401/500, кэш статистики, warnings при нераспознанной
   вёрстке, 429 при параллельном обновлении, 499 при отмене.
+- **Паритет с Python** (`GoldenContractTest`): 31 запрос из
+  `tests/fixtures/golden/api_contract.json` (снят с Flask-версии до удаления
+  бэкенда) прогоняется через Kotlin-сервер; сверяются статус, заголовки
+  (`Content-Type`, `Cache-Control`, `X-Schedule-Exhausted`,
+  `Content-Disposition`) и тело (JSON — структура, `.ics` — текст). Это ловит
+  случайные изменения формата ответов, о которых не знает UI.
 
 ## Интерфейс: `tests/js/ui.test.mjs`
 

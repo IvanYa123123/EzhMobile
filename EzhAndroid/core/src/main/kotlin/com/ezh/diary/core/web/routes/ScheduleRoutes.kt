@@ -89,7 +89,7 @@ fun Route.scheduleRoutes(deps: ApiDeps) {
                 HttpStatusCode.InternalServerError,
             )
         call.respondBody(
-            Ics.scheduleIcs(group, subgroup, schedule),
+            Ics.scheduleIcs(group, subgroup, schedule, Ics.utcStampAt(deps.clock())),
             TEXT_CALENDAR_UTF8,
             extraHeaders = mapOf("Content-Disposition" to Ics.attachmentsHeader(group, subgroup)),
         )

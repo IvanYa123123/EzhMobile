@@ -96,7 +96,7 @@ fun Route.tasksRoutes(deps: ApiDeps) {
             )
         }
         call.respondBody(
-            Ics.tasksIcs(tasks),
+            Ics.tasksIcs(tasks, Ics.utcStampAt(deps.clock())),
             TEXT_CALENDAR_UTF8,
             extraHeaders = mapOf("Content-Disposition" to "attachment; filename=\"ezh_notes.ics\""),
         )
