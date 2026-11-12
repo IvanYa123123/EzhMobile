@@ -6,18 +6,12 @@
 (function () {
     try {
         var t = localStorage.getItem('theme') || 'light';
+        // «Своя тема» удалена из интерфейса: сохранённое значение сбрасываем.
+        if (t === 'custom') {
+            t = 'light';
+            localStorage.setItem('theme', 'light');
+        }
         document.documentElement.setAttribute('data-theme', t);
         document.documentElement.setAttribute('data-bs-theme', t === 'dark' ? 'dark' : 'light');
-        if (t === 'custom') {
-            var raw = localStorage.getItem('customTheme');
-            if (raw) {
-                var d = JSON.parse(raw);
-                if (d && d.colors) {
-                    for (var k in d.colors) {
-                        document.documentElement.style.setProperty(k, d.colors[k]);
-                    }
-                }
-            }
-        }
     } catch (e) {}
 })();

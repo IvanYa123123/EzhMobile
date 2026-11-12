@@ -48,7 +48,7 @@
     .sidebar-column { display: none; }
     .widget-card { padding: 12px !important; border-radius: 12px !important; margin-bottom: 10px; }
 
-    /* НИЖНЯЯ ПАНЕЛЬ (4 кнопки) */
+    /* НИЖНЯЯ ПАНЕЛЬ (5 кнопок) */
     .mobile-bottom-nav {
         position: fixed; bottom: 0; left: 0; right: 0;
         height: calc(64px + env(safe-area-inset-bottom, 0px));
@@ -60,6 +60,7 @@
     .mobile-nav-item.active { color: var(--accent); }
     .mobile-nav-item .nav-icon { font-size: 20px; }
     .mobile-nav-item.active .nav-icon { transform: scale(1.1) translateY(-1px); }
+    body.modal-open .mobile-bottom-nav { display: none; }
 
     /* Переключение вкладок */
     body[data-mobile-tab="schedule"] #mainCalendarGridContainer { display: flex !important; }

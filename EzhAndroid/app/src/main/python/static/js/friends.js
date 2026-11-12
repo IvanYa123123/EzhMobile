@@ -1,76 +1,19 @@
-// Друзья: список, порядок, общие пары, корпуса, фоновый синк.
+// Друзья: список, общие пары, корпуса, фоновый синк.
 
 let _currentFriendIndex = 0;
 
-// In-memory копия порядка. Всегда актуальна; localStorage — персистентный бэкап.
-let _friendsOrderOverride = null;
-
-// Счётчик поколений. Увеличивается при ротации/перестановке.
+// Счётчик поколений. Увеличивается при ротации.
 // fetchFriends сравнивает свой стартовый номер с текущим и
 // игнорирует устаревший ответ.
 let _friendsGeneration = 0;
 
 // ============================================================
-//  ПОРЯДОК
-// ============================================================
-
-function loadFriendsOrder() {
-    if (Array.isArray(_friendsOrderOverride)) return _friendsOrderOverride.slice();
-    try {
-        const raw = localStorage.getItem('friendsOrder');
-        return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
-}
-
-function saveFriendsOrder() {
-    const ids = friendsList.map(f => f.id);
-    _friendsOrderOverride = ids.slice();
-    try {
-        localStorage.setItem('friendsOrder', JSON.stringify(ids));
-    } catch (e) {
-        console.warn('[friends] не удалось записать порядок в localStorage:', e);
-    }
-}
-
-function applyFriendsOrder() {
-    let order = loadFriendsOrder();
-    if (!Array.isArray(order) || order.length === 0) return;
-    friendsList.sort((a, b) => {
-        let ai = order.indexOf(a.id); if (ai === -1) ai = Number.MAX_SAFE_INTEGER;
-        let bi = order.indexOf(b.id); if (bi === -1) bi = Number.MAX_SAFE_INTEGER;
-        return ai - bi;
-    });
-}
-
-// ============================================================
-//  ПРОКРУТКА И ПЕРЕСТАНОВКА
+//  ПРОКРУТКА
 // ============================================================
 
 function rotateFriendsRight() {
     if (!Array.isArray(friendsList) || friendsList.length < 2) return;
     _currentFriendIndex = (_currentFriendIndex + 1) % friendsList.length;
-    renderFriendsCalendar();
-}
-
-function moveFriendUp() {
-    if (!Array.isArray(friendsList) || friendsList.length < 2) return;
-    if (_currentFriendIndex <= 0) return;
-    _friendsGeneration++;  // отменяем висящие fetch
-    const i = _currentFriendIndex;
-    [friendsList[i - 1], friendsList[i]] = [friendsList[i], friendsList[i - 1]];
-    _currentFriendIndex--;
-    saveFriendsOrder();
-    renderFriendsCalendar();
-}
-
-function moveFriendDown() {
-    if (!Array.isArray(friendsList) || friendsList.length < 2) return;
-    if (_currentFriendIndex >= friendsList.length - 1) return;
-    _friendsGeneration++;
-    const i = _currentFriendIndex;
-    [friendsList[i], friendsList[i + 1]] = [friendsList[i + 1], friendsList[i]];
-    _currentFriendIndex++;
-    saveFriendsOrder();
     renderFriendsCalendar();
 }
 
@@ -119,7 +62,6 @@ async function fetchFriends() {
 
     friendsList = Array.isArray(list) ? list : [];
 
-    applyFriendsOrder();
     if (_currentFriendIndex >= friendsList.length) _currentFriendIndex = 0;
 
     await fetchAllFriendsSchedules();
@@ -249,17 +191,11 @@ function renderFriendsCalendar(dir = null) {
     let wrapper = document.createElement('div');
     wrapper.className = "friend-wrapper bg-white rounded shadow-sm px-2 pb-2 pt-1";
 
-    const isFirst = _currentFriendIndex === 0;
-    const isLast  = _currentFriendIndex === friendsList.length - 1;
-
     let header = document.createElement('div');
     header.className = "fw-bold text-primary mb-2 ps-1 pt-1 friend-header-row d-flex align-items-center justify-content-between";
     header.innerHTML = `
         <span>👤 ${escapeHtml(friend.name)} <span class="text-muted small fw-normal ms-1">(${escapeHtml(friend.group)}${friend.subgroup && friend.subgroup !== '0' ? ', подгр. ' + escapeHtml(String(friend.subgroup)) : ', все подгруппы'})</span></span>
         <div class="d-flex align-items-center gap-1">
-            <span class="text-muted small me-1">${_currentFriendIndex + 1} / ${friendsList.length}</span>
-            <button class="btn btn-sm btn-link text-secondary p-0 text-decoration-none" style="width: 20px;" title="Выше" onclick="moveFriendUp()" ${isFirst ? 'disabled' : ''}>↑</button>
-            <button class="btn btn-sm btn-link text-secondary p-0 me-1 text-decoration-none" style="width: 20px;" title="Ниже" onclick="moveFriendDown()" ${isLast ? 'disabled' : ''}>↓</button>
             <button class="btn btn-sm btn-link text-primary p-0 me-2 text-decoration-none" onclick="editFriend(${friend.id}, '${escapeJsString(friend.name)}', '${escapeJsString(friend.group)}', '${friend.subgroup}')">✏️</button>
             <button class="btn btn-sm btn-link text-danger p-0 text-decoration-none" onclick="deleteFriend(${friend.id})">🗑️</button>
         </div>`;

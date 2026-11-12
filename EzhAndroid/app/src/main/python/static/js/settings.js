@@ -2,15 +2,12 @@
 
 const SETTINGS_SECTIONS_KEY = 'settingsSections_v1';
 const SETTINGS_SECTIONS_NAMES = ['display', 'widgets', 'status', 'notif'];
+const THEMES = ['light', 'dark', 'forest', 'sunset', 'ocean', 'hedgehog',
+                'southpark', 'anime', 'oled', 'oled-warm'];
 
 function initSettings() {
     if (typeof migrateLegacyStorageIfNeeded === 'function') {
         migrateLegacyStorageIfNeeded()
-            .then(() => {
-                if (theme === 'custom' && typeof applyCustomTheme === 'function') {
-                    applyCustomTheme();
-                }
-            })
             .catch(e => console.warn('[settings] migrate failed', e));
     }
 
@@ -47,18 +44,8 @@ function openSettingsModal() {
     updateNotificationsHint();
     restoreSettingsSections();
 
-    if (typeof renderCustomThemePanel === 'function') renderCustomThemePanel();
-    if (typeof updateCustomThemePanelVisibility === 'function') updateCustomThemePanelVisibility();
-
     let modalEl = document.getElementById('settingsModal');
     let modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-
-    if (theme === 'custom') {
-        modalEl.addEventListener('shown.bs.modal', () => {
-            scrollToCustomThemePanel();
-        }, { once: true });
-    }
-
     modal.show();
 }
 
@@ -154,13 +141,10 @@ function saveSettingsFromUI() {
     localStorage.setItem('notificationAdvance', String(notificationAdvance));
     localStorage.setItem('notificationUnit', notificationUnit);
 
-    const prevTheme = theme;
     theme = document.getElementById('settingsTheme').value;
+    if (!THEMES.includes(theme)) theme = 'light';
     localStorage.setItem('theme', theme);
     applyTheme();
-
-    if (typeof updateCustomThemePanelVisibility === 'function') updateCustomThemePanelVisibility();
-    if (prevTheme !== 'custom' && theme === 'custom') scrollToCustomThemePanel();
 
     renderCalendar();
     updateScheduleStatus();
@@ -168,17 +152,6 @@ function saveSettingsFromUI() {
     refreshNotifications();
     if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
     updateNotificationsHint();
-}
-
-function scrollToCustomThemePanel() {
-    const panel = document.getElementById('customThemePanel');
-    if (!panel) return;
-    requestAnimationFrame(() => {
-        setTimeout(() => {
-            try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-            catch (e) { panel.scrollIntoView(true); }
-        }, 80);
-    });
 }
 
 function restartStatusTimer() {
@@ -287,15 +260,9 @@ function updateNotificationsHint() {
 
 function applyTheme() {
     const prevTheme = document.documentElement.getAttribute('data-theme');
-    if (prevTheme === 'custom' && theme !== 'custom') {
-        if (typeof clearCustomThemeInline === 'function') clearCustomThemeInline();
-    }
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-bs-theme',
         theme === 'dark' ? 'dark' : 'light');
-    if (theme === 'custom') {
-        if (typeof applyCustomTheme === 'function') applyCustomTheme();
-    }
     if (prevTheme !== theme && typeof refreshChartsTheme === 'function') refreshChartsTheme();
 }
 

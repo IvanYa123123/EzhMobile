@@ -12,30 +12,6 @@ function _gsBindFocusOnShow(modalEl) {
     });
 }
 
-function _gsUpdateHintForLoadState() {
-    const hint = document.getElementById('gsHint');
-    if (!hint) return;
-
-    const failed = (typeof groupsLoadFailed !== 'undefined') && groupsLoadFailed;
-    const loaded = (typeof groupsLoaded !== 'undefined') && groupsLoaded;
-
-    if (failed) {
-        hint.textContent = 'Справочник недоступен. Введите группу вручную и нажмите «Продолжить».';
-        hint.className = 'small text-warning mb-2';
-        return;
-    }
-    if (!loaded) {
-        hint.textContent = '⏳ Загрузка справочника…';
-        hint.className = 'small text-muted mb-2';
-        return;
-    }
-    hint.textContent = 'Начните вводить номер группы — например, ИВТ/б-24-1-о.';
-    hint.className = 'small text-muted mb-2';
-}
-
-document.addEventListener('ezh:groups-loaded', _gsUpdateHintForLoadState);
-document.addEventListener('ezh:groups-load-failed', _gsUpdateHintForLoadState);
-
 function openGroupSelectModal(forced = false) {
     try {
         console.log('[group-select] open, forced =', forced);
@@ -71,7 +47,7 @@ function openGroupSelectModal(forced = false) {
                                     <option value="2">2 подгруппа</option>
                                 </select>
                             </div>
-                            <div id="gsHint" class="small text-muted mb-2">Введите номер группы.</div>
+                            <div id="gsHint" class="small text-danger mb-2" style="display:none;"></div>
                         </div>
                         <div class="modal-footer border-0">
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="gsCancelBtn">Отмена</button>
@@ -106,8 +82,6 @@ function openGroupSelectModal(forced = false) {
         const subSel = document.getElementById('gsSubgroupSelect');
         if (subSel) subSel.value = savedSub;
 
-        _gsUpdateHintForLoadState();
-
         _groupSelectModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
         _groupSelectModalInstance.show();
 
@@ -127,7 +101,7 @@ async function saveGroupFromModal() {
     const subgroup = select.value || '0';
 
     if (!group) {
-        if (hint) { hint.textContent = 'Введите название группы'; hint.className = 'small text-danger mb-2'; }
+        if (hint) { hint.textContent = 'Введите название группы'; hint.style.display = 'block'; }
         input.focus();
         return;
     }
@@ -146,7 +120,7 @@ async function saveGroupFromModal() {
             console.error('[group-select] add custom failed:', e);
             if (hint) {
                 hint.textContent = 'Не удалось добавить группу. Проверьте формат (буквы, цифры, / . _ -).';
-                hint.className = 'small text-danger mb-2';
+                hint.style.display = 'block';
             }
             return;
         }

@@ -71,6 +71,11 @@ if (!['min', 'hour', 'day', 'week'].includes(notificationUnit)) {
 }
 
 let theme = localStorage.getItem('theme') || 'light';
+// «Своя тема» удалена из интерфейса: сохранённое значение сбрасываем.
+if (theme === 'custom') {
+    theme = 'light';
+    try { localStorage.setItem('theme', 'light'); } catch (e) {}
+}
 
 let taskDatesSet = new Set();
 
@@ -136,13 +141,6 @@ function switchFriendsTeachersTab(tab) {
 // ============================================================
 //  МИНИ-ЗАГЛУШКИ ДЛЯ НЕОБЯЗАТЕЛЬНЫХ МОДУЛЕЙ
 // ============================================================
-
-function ezhJump() {
-    if (typeof goToToday === 'function') {
-        goToToday();
-    }
-}
-window.ezhJump = ezhJump;
 
 function renderSuggestions() {
     const el = document.getElementById('suggestionsContent');
@@ -2618,17 +2616,23 @@ function _formatStatus(prefix, diffMs, absoluteTime) {
     return prefix;
 }
 
+function _setStatusText(text) {
+    ['scheduleStatus', 'dayScheduleStatus'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+    });
+}
+
 function updateScheduleStatus() {
-    let el = document.getElementById('scheduleStatus');
-    if (!el) return;
+    if (!document.getElementById('scheduleStatus') && !document.getElementById('dayScheduleStatus')) return;
 
     if (typeof showStatus !== 'undefined' && !showStatus) {
-        el.textContent = '';
+        _setStatusText('');
         return;
     }
 
     if (!cachedSchedule || cachedSchedule.length === 0) {
-        el.textContent = '';
+        _setStatusText('');
         return;
     }
 
@@ -2654,7 +2658,7 @@ function updateScheduleStatus() {
             let remaining = current.endMs - nowMs;
             let pairNum = current.n || '?';
             let endTime = fixTime(current.time_range.split(' - ')[1]);
-            el.textContent = _formatStatus(`Окончание ${pairNum} пары`, remaining, endTime);
+            _setStatusText(_formatStatus(`Окончание ${pairNum} пары`, remaining, endTime));
             return;
         }
 
@@ -2662,7 +2666,7 @@ function updateScheduleStatus() {
         if (nowMs < first.startMs) {
             let until = first.startMs - nowMs;
             let startTime = fixTime(first.time_range.split(' - ')[0]);
-            el.textContent = _formatStatus('Начало пар', until, startTime);
+            _setStatusText(_formatStatus('Начало пар', until, startTime));
             return;
         }
 
@@ -2671,18 +2675,18 @@ function updateScheduleStatus() {
             let until = next.startMs - nowMs;
             let startTime = fixTime(next.time_range.split(' - ')[0]);
             let pairNum = next.n || '?';
-            el.textContent = _formatStatus(`Начало ${pairNum} пары`, until, startTime);
+            _setStatusText(_formatStatus(`Начало ${pairNum} пары`, until, startTime));
             return;
         }
 
-        setStatusForNextDay(now, el);
+        setStatusForNextDay(now);
         return;
     }
 
-    setStatusForNextDay(now, el);
+    setStatusForNextDay(now);
 }
 
-function setStatusForNextDay(now, el) {
+function setStatusForNextDay(now) {
     let datesWithPairs = new Set(cachedSchedule.map(x => x.date));
 
     for (let i = 1; i <= 365; i++) {
@@ -2700,14 +2704,14 @@ function setStatusForNextDay(now, el) {
         let firstTime = fixTime(first.time_range.split(' - ')[0]);
 
         if (i === 1) {
-            el.textContent = _formatStatus('Начало пар завтра', null, firstTime);
+            _setStatusText(_formatStatus('Начало пар завтра', null, firstTime));
         } else {
-            el.textContent = _formatStatus(`Начало пар ${formatDateRu(dateStr)}`, null, firstTime);
+            _setStatusText(_formatStatus(`Начало пар ${formatDateRu(dateStr)}`, null, firstTime));
         }
         return;
     }
 
-    el.textContent = '';
+    _setStatusText('');
 }
 
 ;
@@ -3037,79 +3041,22 @@ function renderTasksStaggered(tasks) {
 
 ;
 // --- friends.js ---
-// Друзья: список, порядок, общие пары, корпуса, фоновый синк.
+// Друзья: список, общие пары, корпуса, фоновый синк.
 
 let _currentFriendIndex = 0;
 
-// In-memory копия порядка. Всегда актуальна; localStorage — персистентный бэкап.
-let _friendsOrderOverride = null;
-
-// Счётчик поколений. Увеличивается при ротации/перестановке.
+// Счётчик поколений. Увеличивается при ротации.
 // fetchFriends сравнивает свой стартовый номер с текущим и
 // игнорирует устаревший ответ.
 let _friendsGeneration = 0;
 
 // ============================================================
-//  ПОРЯДОК
-// ============================================================
-
-function loadFriendsOrder() {
-    if (Array.isArray(_friendsOrderOverride)) return _friendsOrderOverride.slice();
-    try {
-        const raw = localStorage.getItem('friendsOrder');
-        return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
-}
-
-function saveFriendsOrder() {
-    const ids = friendsList.map(f => f.id);
-    _friendsOrderOverride = ids.slice();
-    try {
-        localStorage.setItem('friendsOrder', JSON.stringify(ids));
-    } catch (e) {
-        console.warn('[friends] не удалось записать порядок в localStorage:', e);
-    }
-}
-
-function applyFriendsOrder() {
-    let order = loadFriendsOrder();
-    if (!Array.isArray(order) || order.length === 0) return;
-    friendsList.sort((a, b) => {
-        let ai = order.indexOf(a.id); if (ai === -1) ai = Number.MAX_SAFE_INTEGER;
-        let bi = order.indexOf(b.id); if (bi === -1) bi = Number.MAX_SAFE_INTEGER;
-        return ai - bi;
-    });
-}
-
-// ============================================================
-//  ПРОКРУТКА И ПЕРЕСТАНОВКА
+//  ПРОКРУТКА
 // ============================================================
 
 function rotateFriendsRight() {
     if (!Array.isArray(friendsList) || friendsList.length < 2) return;
     _currentFriendIndex = (_currentFriendIndex + 1) % friendsList.length;
-    renderFriendsCalendar();
-}
-
-function moveFriendUp() {
-    if (!Array.isArray(friendsList) || friendsList.length < 2) return;
-    if (_currentFriendIndex <= 0) return;
-    _friendsGeneration++;  // отменяем висящие fetch
-    const i = _currentFriendIndex;
-    [friendsList[i - 1], friendsList[i]] = [friendsList[i], friendsList[i - 1]];
-    _currentFriendIndex--;
-    saveFriendsOrder();
-    renderFriendsCalendar();
-}
-
-function moveFriendDown() {
-    if (!Array.isArray(friendsList) || friendsList.length < 2) return;
-    if (_currentFriendIndex >= friendsList.length - 1) return;
-    _friendsGeneration++;
-    const i = _currentFriendIndex;
-    [friendsList[i], friendsList[i + 1]] = [friendsList[i + 1], friendsList[i]];
-    _currentFriendIndex++;
-    saveFriendsOrder();
     renderFriendsCalendar();
 }
 
@@ -3158,7 +3105,6 @@ async function fetchFriends() {
 
     friendsList = Array.isArray(list) ? list : [];
 
-    applyFriendsOrder();
     if (_currentFriendIndex >= friendsList.length) _currentFriendIndex = 0;
 
     await fetchAllFriendsSchedules();
@@ -3288,17 +3234,11 @@ function renderFriendsCalendar(dir = null) {
     let wrapper = document.createElement('div');
     wrapper.className = "friend-wrapper bg-white rounded shadow-sm px-2 pb-2 pt-1";
 
-    const isFirst = _currentFriendIndex === 0;
-    const isLast  = _currentFriendIndex === friendsList.length - 1;
-
     let header = document.createElement('div');
     header.className = "fw-bold text-primary mb-2 ps-1 pt-1 friend-header-row d-flex align-items-center justify-content-between";
     header.innerHTML = `
         <span>👤 ${escapeHtml(friend.name)} <span class="text-muted small fw-normal ms-1">(${escapeHtml(friend.group)}${friend.subgroup && friend.subgroup !== '0' ? ', подгр. ' + escapeHtml(String(friend.subgroup)) : ', все подгруппы'})</span></span>
         <div class="d-flex align-items-center gap-1">
-            <span class="text-muted small me-1">${_currentFriendIndex + 1} / ${friendsList.length}</span>
-            <button class="btn btn-sm btn-link text-secondary p-0 text-decoration-none" style="width: 20px;" title="Выше" onclick="moveFriendUp()" ${isFirst ? 'disabled' : ''}>↑</button>
-            <button class="btn btn-sm btn-link text-secondary p-0 me-1 text-decoration-none" style="width: 20px;" title="Ниже" onclick="moveFriendDown()" ${isLast ? 'disabled' : ''}>↓</button>
             <button class="btn btn-sm btn-link text-primary p-0 me-2 text-decoration-none" onclick="editFriend(${friend.id}, '${escapeJsString(friend.name)}', '${escapeJsString(friend.group)}', '${friend.subgroup}')">✏️</button>
             <button class="btn btn-sm btn-link text-danger p-0 text-decoration-none" onclick="deleteFriend(${friend.id})">🗑️</button>
         </div>`;
@@ -4441,15 +4381,12 @@ function refreshChartsTheme() {
 
 const SETTINGS_SECTIONS_KEY = 'settingsSections_v1';
 const SETTINGS_SECTIONS_NAMES = ['display', 'widgets', 'status', 'notif'];
+const THEMES = ['light', 'dark', 'forest', 'sunset', 'ocean', 'hedgehog',
+                'southpark', 'anime', 'oled', 'oled-warm'];
 
 function initSettings() {
     if (typeof migrateLegacyStorageIfNeeded === 'function') {
         migrateLegacyStorageIfNeeded()
-            .then(() => {
-                if (theme === 'custom' && typeof applyCustomTheme === 'function') {
-                    applyCustomTheme();
-                }
-            })
             .catch(e => console.warn('[settings] migrate failed', e));
     }
 
@@ -4486,18 +4423,8 @@ function openSettingsModal() {
     updateNotificationsHint();
     restoreSettingsSections();
 
-    if (typeof renderCustomThemePanel === 'function') renderCustomThemePanel();
-    if (typeof updateCustomThemePanelVisibility === 'function') updateCustomThemePanelVisibility();
-
     let modalEl = document.getElementById('settingsModal');
     let modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-
-    if (theme === 'custom') {
-        modalEl.addEventListener('shown.bs.modal', () => {
-            scrollToCustomThemePanel();
-        }, { once: true });
-    }
-
     modal.show();
 }
 
@@ -4593,13 +4520,10 @@ function saveSettingsFromUI() {
     localStorage.setItem('notificationAdvance', String(notificationAdvance));
     localStorage.setItem('notificationUnit', notificationUnit);
 
-    const prevTheme = theme;
     theme = document.getElementById('settingsTheme').value;
+    if (!THEMES.includes(theme)) theme = 'light';
     localStorage.setItem('theme', theme);
     applyTheme();
-
-    if (typeof updateCustomThemePanelVisibility === 'function') updateCustomThemePanelVisibility();
-    if (prevTheme !== 'custom' && theme === 'custom') scrollToCustomThemePanel();
 
     renderCalendar();
     updateScheduleStatus();
@@ -4607,17 +4531,6 @@ function saveSettingsFromUI() {
     refreshNotifications();
     if (typeof scheduleAllNotifications === 'function') scheduleAllNotifications();
     updateNotificationsHint();
-}
-
-function scrollToCustomThemePanel() {
-    const panel = document.getElementById('customThemePanel');
-    if (!panel) return;
-    requestAnimationFrame(() => {
-        setTimeout(() => {
-            try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-            catch (e) { panel.scrollIntoView(true); }
-        }, 80);
-    });
 }
 
 function restartStatusTimer() {
@@ -4726,15 +4639,9 @@ function updateNotificationsHint() {
 
 function applyTheme() {
     const prevTheme = document.documentElement.getAttribute('data-theme');
-    if (prevTheme === 'custom' && theme !== 'custom') {
-        if (typeof clearCustomThemeInline === 'function') clearCustomThemeInline();
-    }
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-bs-theme',
         theme === 'dark' ? 'dark' : 'light');
-    if (theme === 'custom') {
-        if (typeof applyCustomTheme === 'function') applyCustomTheme();
-    }
     if (prevTheme !== theme && typeof refreshChartsTheme === 'function') refreshChartsTheme();
 }
 
@@ -6570,1223 +6477,6 @@ async function manualRefresh() {
 })();
 
 ;
-// --- custom-theme.js ---
-// ============================================================
-//  СВОЯ ТЕМА + СОХРАНЁННЫЕ ПРЕСЕТЫ + INDEXEDDB ДЛЯ ФОТО
-// ------------------------------------------------------------
-//  Цвета, стикеры, прозрачности — в localStorage (маленькие).
-//  Фото — в IndexedDB (десятки МБ лимит). Пресеты хранят только
-//  ссылку на фото, поэтому несколько тем могут делить одно фото.
-//
-//  Загрузка фото — только с компьютера (file input).
-//
-//  Секции панели (Цвета / Фон / Стикеры) сворачиваются и по
-//  умолчанию СВЁРНУТЫ. Состояние хранится в customThemeSections_v2.
-//
-//  «Взять за основу готовую тему»: временно применяем выбранную
-//  базовую тему к <html>, считываем вычисленные значения CSS-
-//  переменных через getComputedStyle, потом возвращаем всё на место
-//  и сохраняем как кастомную. Стили (в т.ч. --font-display для особых
-//  тем) наследуются.
-// ============================================================
-
-const CUSTOM_THEME_STORAGE_KEY  = 'customTheme';
-const CUSTOM_THEME_PRESETS_KEY  = 'customThemePresets';
-const CUSTOM_THEME_ADVANCED_KEY = 'customThemeAdvancedShown';
-const CUSTOM_THEME_SECTIONS_KEY = 'customThemeSections_v2';
-
-const IDB_NAME    = 'ezh-theme';
-const IDB_VERSION = 1;
-const IDB_STORE   = 'photos';
-
-const PHOTO_MAX_DIM = 800;
-const PHOTO_QUALITY = 0.72;
-const PHOTO_MAX_INPUT_BYTES = 10 * 1024 * 1024;
-
-let _customThemeApplyToken = 0;
-let _idbAvailable = null;
-let _customThemeAdvancedShown = localStorage.getItem(CUSTOM_THEME_ADVANCED_KEY) === 'true';
-let _lastPromptedPhotoId = null;
-
-// ============================================================
-//  ПОЛЯ-ПИКЕРЫ
-// ============================================================
-
-const CUSTOM_THEME_FIELDS = [
-    { group: 'Основное', basic: true, fields: [
-        { key: '--bg-body',        label: 'Фон страницы' },
-        { key: '--bg-surface',     label: 'Карточки' },
-        { key: '--text-primary',   label: 'Основной текст' },
-        { key: '--text-secondary', label: 'Вторичный текст' },
-        { key: '--accent',         label: 'Акцент' },
-        { key: '--accent-hover',   label: 'Акцент (hover)' },
-    ]},
-    { group: 'Диаграммы', basic: true, fields: [
-        { key: '--chart-passed',    label: 'Прошло' },
-        { key: '--chart-remaining', label: 'Осталось' },
-        { key: '--chart-lab-done',  label: 'Лабы: сдано' },
-        { key: '--chart-lab-left',  label: 'Лабы: осталось' },
-    ]},
-    { group: 'Общие пары у друзей', basic: true, fields: [
-        { key: '--friend-common-bg',    label: 'Общая пара: фон' },
-        { key: '--friend-common-text',  label: 'Общая пара: текст' },
-        { key: '--friend-warning-bg',   label: 'Разные корпуса: фон' },
-        { key: '--friend-warning-text', label: 'Разные корпуса: текст' },
-        { key: '--friend-same-bg',      label: 'Один корпус: фон' },
-        { key: '--friend-same-text',    label: 'Один корпус: текст' },
-        { key: '--friend-info-bg',      label: 'Справка: фон' },
-        { key: '--friend-info-text',    label: 'Справка: текст' },
-    ]},
-    { group: 'Фоны и границы', fields: [
-        { key: '--bg-surface-alt',  label: 'Вспом. фон' },
-        { key: '--bg-surface-soft', label: 'Мягкий фон' },
-        { key: '--bg-hover',        label: 'Hover' },
-        { key: '--border-color',    label: 'Границы' },
-        { key: '--border-soft',     label: 'Границы (мягко)' },
-    ]},
-    { group: 'Текст', fields: [
-        { key: '--text-muted',  label: 'Тусклый' },
-        { key: '--text-invert', label: 'Инверсный' },
-    ]},
-    { group: 'Акцент', fields: [
-        { key: '--accent-soft',   label: 'Акцент (мягкий)' },
-        { key: '--accent-border', label: 'Акцент (гран.)' },
-    ]},
-];
-
-function defaultCustomTheme() {
-    return {
-        colors: {
-            '--bg-body':         '#f8fafc',
-            '--bg-surface':      '#ffffff',
-            '--bg-surface-alt':  '#f1f5f9',
-            '--bg-surface-soft': '#f8fafc',
-            '--bg-hover':        '#e2e8f0',
-            '--border-color':    '#e2e8f0',
-            '--border-soft':     '#f1f5f9',
-            '--text-primary':    '#334155',
-            '--text-secondary':  '#64748b',
-            '--text-muted':      '#94a3b8',
-            '--text-invert':     '#ffffff',
-            '--accent':          '#6366f1',
-            '--accent-hover':    '#4f46e5',
-            '--accent-soft':     '#eef2ff',
-            '--accent-border':   '#c7d2fe',
-            '--status-green':     '#10b981',
-            '--status-orange':    '#f59e0b',
-            '--status-red':       '#ef4444',
-            '--status-completed': '#94a3b8',
-            '--chart-passed':     '#6366f1',
-            '--chart-remaining':  '#cbd5e1',
-            '--chart-lab-done':   '#14b8a6',
-            '--chart-lab-left':   '#f59e0b',
-            '--friend-common-bg':     '#10b981',
-            '--friend-common-text':   '#ffffff',
-            '--friend-warning-bg':    '#f59e0b',
-            '--friend-warning-text':  '#ffffff',
-            '--friend-same-bg':       '#d1fae5',
-            '--friend-same-text':     '#065f46',
-            '--friend-info-bg':       '#e0e7ff',
-            '--friend-info-text':     '#3730a3',
-        },
-        stickers:        '',
-        stickersOpacity: 0.15,
-        photoId:         null,
-        photoOpacity:    0.15,
-    };
-}
-
-// ============================================================
-//  INDEXEDDB
-// ============================================================
-
-function idbOpen() {
-    return new Promise((resolve, reject) => {
-        if (!('indexedDB' in window)) { reject(new Error('IndexedDB not supported')); return; }
-        const req = indexedDB.open(IDB_NAME, IDB_VERSION);
-        req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains(IDB_STORE)) {
-                db.createObjectStore(IDB_STORE, { keyPath: 'key' });
-            }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror   = () => reject(req.error);
-    });
-}
-
-async function idbPutPhoto(key, dataUrl) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).put({ key, dataUrl, bytes: dataUrl.length, createdAt: Date.now() });
-        tx.oncomplete = () => { db.close(); resolve(); };
-        tx.onerror    = () => { db.close(); reject(tx.error); };
-    });
-}
-
-async function idbGetPhoto(key) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, 'readonly');
-        const req = tx.objectStore(IDB_STORE).get(key);
-        req.onsuccess = () => { db.close(); resolve(req.result ? req.result.dataUrl : null); };
-        req.onerror = () => { db.close(); reject(req.error); };
-    });
-}
-
-async function idbGetPhotoInfo(key) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, 'readonly');
-        const req = tx.objectStore(IDB_STORE).get(key);
-        req.onsuccess = () => { db.close(); resolve(req.result || null); };
-        req.onerror = () => { db.close(); reject(req.error); };
-    });
-}
-
-async function idbDeletePhoto(key) {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).delete(key);
-        tx.oncomplete = () => { db.close(); resolve(); };
-        tx.onerror    = () => { db.close(); reject(tx.error); };
-    });
-}
-
-async function idbIsAvailable() {
-    if (_idbAvailable !== null) return _idbAvailable;
-    try { await idbOpen(); _idbAvailable = true; } catch (e) { _idbAvailable = false; }
-    return _idbAvailable;
-}
-
-function genPhotoKey() {
-    return 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
-}
-
-// ============================================================
-//  ХРАНЕНИЕ
-// ============================================================
-
-function loadCustomTheme() {
-    try {
-        const raw = localStorage.getItem(CUSTOM_THEME_STORAGE_KEY);
-        if (!raw) return defaultCustomTheme();
-        const parsed = JSON.parse(raw);
-        const def = defaultCustomTheme();
-        return {
-            colors:          Object.assign({}, def.colors, parsed.colors || {}),
-            stickers:        parsed.stickers || '',
-            stickersOpacity: typeof parsed.stickersOpacity === 'number' ? parsed.stickersOpacity : def.stickersOpacity,
-            photoId:         parsed.photoId || null,
-            photoOpacity:    typeof parsed.photoOpacity === 'number' ? parsed.photoOpacity : def.photoOpacity,
-        };
-    } catch (e) {
-        return defaultCustomTheme();
-    }
-}
-
-function saveCustomTheme(data) {
-    try {
-        const serialized = {
-            colors:          data.colors || {},
-            stickers:        data.stickers || '',
-            stickersOpacity: typeof data.stickersOpacity === 'number' ? data.stickersOpacity : 0.15,
-            photoId:         data.photoId || null,
-            photoOpacity:    typeof data.photoOpacity === 'number' ? data.photoOpacity : 0.15,
-        };
-        localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify(serialized));
-        return { ok: true };
-    } catch (e) {
-        console.error('[custom-theme] save failed', e);
-        if (e && e.name === 'QuotaExceededError') {
-            alert('Не удалось сохранить: превышен лимит localStorage. Удалите старые пресеты.');
-        }
-        return { ok: false, error: e };
-    }
-}
-
-function loadCustomThemePresets() {
-    try {
-        const raw = localStorage.getItem(CUSTOM_THEME_PRESETS_KEY);
-        const list = raw ? JSON.parse(raw) : [];
-        return Array.isArray(list) ? list : [];
-    } catch (e) { return []; }
-}
-
-function saveCustomThemePresets(list) {
-    const originalLength = list.length;
-    let working = list.slice();
-    while (true) {
-        try {
-            localStorage.setItem(CUSTOM_THEME_PRESETS_KEY, JSON.stringify(working));
-            return { ok: true, dropped: originalLength - working.length };
-        } catch (e) {
-            const isQuota = e && (e.name === 'QuotaExceededError' || e.code === 22 || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
-            if (isQuota && working.length > 0) { working.shift(); continue; }
-            return { ok: false, error: e, dropped: originalLength - working.length };
-        }
-    }
-}
-
-// ============================================================
-//  МИГРАЦИЯ СО СТАРОГО ФОРМАТА
-// ============================================================
-
-async function migrateLegacyStorageIfNeeded() {
-    if (!(await idbIsAvailable())) return;
-
-    try {
-        const raw = localStorage.getItem(CUSTOM_THEME_STORAGE_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && parsed.photoUrl && typeof parsed.photoUrl === 'string') {
-                const url = parsed.photoUrl;
-                if (url.startsWith('data:image/')) {
-                    const key = genPhotoKey();
-                    await idbPutPhoto(key, url);
-                    parsed.photoId = 'idb:' + key;
-                } else if (url.startsWith('http')) {
-                    parsed.photoId = 'url:' + url;
-                } else {
-                    parsed.photoId = null;
-                }
-                delete parsed.photoUrl;
-                localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify(parsed));
-                console.log('[custom-theme] migrated active theme photo to IDB');
-            }
-        }
-    } catch (e) { console.warn('[custom-theme] migration of active theme failed', e); }
-
-    try {
-        const raw = localStorage.getItem(CUSTOM_THEME_PRESETS_KEY);
-        if (raw) {
-            const list = JSON.parse(raw);
-            if (Array.isArray(list)) {
-                let changed = false;
-                for (const preset of list) {
-                    const d = preset && preset.data;
-                    if (!d || !d.photoUrl || typeof d.photoUrl !== 'string') continue;
-                    const url = d.photoUrl;
-                    if (url.startsWith('data:image/')) {
-                        const key = genPhotoKey();
-                        await idbPutPhoto(key, url);
-                        d.photoId = 'idb:' + key;
-                    } else if (url.startsWith('http')) {
-                        d.photoId = 'url:' + url;
-                    } else {
-                        d.photoId = null;
-                    }
-                    delete d.photoUrl;
-                    changed = true;
-                }
-                if (changed) {
-                    localStorage.setItem(CUSTOM_THEME_PRESETS_KEY, JSON.stringify(list));
-                    console.log('[custom-theme] migrated presets photos to IDB');
-                }
-            }
-        }
-    } catch (e) { console.warn('[custom-theme] migration of presets failed', e); }
-}
-
-// ============================================================
-//  ХЕЛПЕРЫ ЦВЕТА
-// ============================================================
-
-function hexToRgba(hex, alpha) {
-    if (!hex || hex[0] !== '#') return `rgba(255,255,255,${alpha})`;
-    let h = hex.slice(1);
-    if (h.length === 3) h = h.split('').map(c => c + c).join('');
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function rgbToHex(c) {
-    const toHex = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
-    return '#' + toHex(c.r) + toHex(c.g) + toHex(c.b);
-}
-
-function rgbToHsl(r, g, b) {
-    r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h, s, l = (max + min) / 2;
-    if (max === min) {
-        h = s = 0;
-    } else {
-        const d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        switch (max) {
-            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-            case g: h = (b - r) / d + 2; break;
-            case b: h = (r - g) / d + 4; break;
-        }
-        h /= 6;
-    }
-    return { h: h * 360, s, l };
-}
-
-function hslToRgb(h, s, l) {
-    h = (((h % 360) + 360) % 360) / 360;
-    let r, g, b;
-    if (s === 0) { r = g = b = l; }
-    else {
-        const hue2rgb = (p, q, t) => {
-            if (t < 0) t += 1;
-            if (t > 1) t -= 1;
-            if (t < 1/6) return p + (q - p) * 6 * t;
-            if (t < 1/2) return q;
-            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-            return p;
-        };
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        const p = 2 * l - q;
-        r = hue2rgb(p, q, h + 1/3);
-        g = hue2rgb(p, q, h);
-        b = hue2rgb(p, q, h - 1/3);
-    }
-    return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
-}
-
-function hslAdjust(rgb, dh, ds, dl) {
-    const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
-    const h = hsl.h + dh;
-    const s = Math.max(0, Math.min(1, hsl.s + ds));
-    const l = Math.max(0, Math.min(1, hsl.l + dl));
-    return hslToRgb(h, s, l);
-}
-
-function stickersToSvgDataUri(emojiString, opacity) {
-    const emojis = String(emojiString || '').trim().split(/\s+/).filter(Boolean).slice(0, 4);
-    if (emojis.length === 0) return null;
-    const size = 180;
-    const cell = size / 2;
-    let texts = '';
-    for (let i = 0; i < emojis.length; i++) {
-        const x = (i % 2) * cell + cell / 2;
-        const y = Math.floor(i / 2) * cell + cell / 2;
-        texts += `<text x="${x}" y="${y}" font-size="${Math.round(cell * 0.7)}" text-anchor="middle" dominant-baseline="central" opacity="${opacity}">${emojis[i]}</text>`;
-    }
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${texts}</svg>`;
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function compressImage(file, maxDim, quality) {
-    return new Promise((resolve, reject) => {
-        if (!file || !file.type || !file.type.startsWith('image/')) {
-            reject(new Error('Не картинка'));
-            return;
-        }
-        const objectUrl = URL.createObjectURL(file);
-        const img = new Image();
-        img.onload = () => {
-            URL.revokeObjectURL(objectUrl);
-            try {
-                let { width, height } = img;
-                if (width > maxDim || height > maxDim) {
-                    const scale = maxDim / Math.max(width, height);
-                    width  = Math.max(1, Math.round(width  * scale));
-                    height = Math.max(1, Math.round(height * scale));
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, width, height);
-                ctx.drawImage(img, 0, 0, width, height);
-                const dataUrl = canvas.toDataURL('image/jpeg', quality);
-                resolve(dataUrl);
-            } catch (err) { reject(err); }
-        };
-        img.onerror = () => {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error('Не удалось прочитать изображение'));
-        };
-        img.src = objectUrl;
-    });
-}
-
-function dataUrlByteSize(dataUrl) {
-    if (!dataUrl) return 0;
-    const comma = dataUrl.indexOf(',');
-    if (comma < 0) return dataUrl.length;
-    return Math.round((dataUrl.length - comma - 1) * 0.75);
-}
-
-// ============================================================
-//  ИЗВЛЕЧЕНИЕ ПАЛИТРЫ ИЗ ФОТО
-// ============================================================
-
-function extractPaletteFromImage(dataUrl, sampleSize = 120, keep = 24) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        if (!dataUrl.startsWith('data:')) {
-            img.crossOrigin = 'anonymous';
-        }
-        img.onload = () => {
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = sampleSize;
-                canvas.height = sampleSize;
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                ctx.drawImage(img, 0, 0, sampleSize, sampleSize);
-
-                let pixels;
-                try {
-                    pixels = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
-                } catch (secErr) {
-                    reject(new Error('CORS: сервер не разрешает анализ этого изображения.'));
-                    return;
-                }
-
-                const buckets = new Map();
-                for (let i = 0; i < pixels.length; i += 4) {
-                    const a = pixels[i + 3];
-                    if (a < 128) continue;
-                    const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
-                    const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
-                    if (!buckets.has(key)) buckets.set(key, { r: 0, g: 0, b: 0, count: 0 });
-                    const bk = buckets.get(key);
-                    bk.r += r; bk.g += g; bk.b += b; bk.count++;
-                }
-
-                const colors = [];
-                for (const b of buckets.values()) {
-                    colors.push({
-                        r: b.r / b.count,
-                        g: b.g / b.count,
-                        b: b.b / b.count,
-                        count: b.count,
-                    });
-                }
-                colors.sort((a, b) => b.count - a.count);
-                const top = colors.slice(0, keep);
-                top.forEach(c => {
-                    const hsl = rgbToHsl(c.r, c.g, c.b);
-                    c.h = hsl.h; c.s = hsl.s; c.l = hsl.l;
-                });
-
-                resolve(top);
-            } catch (e) { reject(e); }
-        };
-        img.onerror = () => reject(new Error('Не удалось загрузить изображение'));
-        img.src = dataUrl;
-    });
-}
-
-function buildThemeFromPalette(palette) {
-    if (!palette || palette.length === 0) return null;
-
-    let lumSum = 0, cnt = 0;
-    palette.forEach(c => { lumSum += c.l * c.count; cnt += c.count; });
-    const avgLum = cnt > 0 ? lumSum / cnt : 0.5;
-    const isDark = avgLum < 0.4;
-
-    const bySat = [...palette].sort((a, b) => b.s - a.s);
-    const byLum = [...palette].sort((a, b) => a.l - b.l);
-
-    let accentC = bySat.find(c => c.s > 0.25 && c.l > 0.2 && c.l < 0.8);
-    if (!accentC) accentC = bySat[0];
-
-    let bgC = isDark ? byLum[0] : byLum[byLum.length - 1];
-    if (isDark && bgC.l > 0.35) bgC = { r: 15,  g: 23,  b: 42 };
-    if (!isDark && bgC.l < 0.85) bgC = { r: 248, g: 250, b: 252 };
-
-    let textC = isDark ? byLum[byLum.length - 1] : byLum[0];
-    if (isDark && textC.l < 0.7)  textC = { r: 226, g: 232, b: 240 };
-    if (!isDark && textC.l > 0.4) textC = { r: 51,  g: 65,  b: 85 };
-
-    const accent      = accentC;
-    const accentHover = hslAdjust(accent,  0,  0,    isDark ?  0.10 : -0.12);
-    const accentSoft  = hslAdjust(accent,  0, isDark ? -0.20 : -0.10, isDark ? -0.35 :  0.40);
-    const accentBorder= hslAdjust(accent,  0, -0.10, isDark ? -0.15 :  0.20);
-
-    const bgBody       = bgC;
-    const bgSurface    = isDark ? hslAdjust(bgBody, 0,  0,     0.06) : hslAdjust(bgBody, 0,  0,     0.03);
-    const bgSurfaceAlt = isDark ? hslAdjust(bgBody, 0,  0,     0.12) : hslAdjust(bgBody, 0, -0.05, -0.06);
-    const bgSurfaceSoft= bgBody;
-    const bgHover      = isDark ? hslAdjust(bgBody, 0,  0,     0.18) : hslAdjust(bgBody, 0, -0.05, -0.12);
-    const borderColor  = isDark ? hslAdjust(bgBody, 0,  0.05,  0.20) : hslAdjust(bgBody, 0,  0.05, -0.15);
-    const borderSoft   = isDark ? hslAdjust(bgBody, 0,  0.05,  0.12) : hslAdjust(bgBody, 0,  0.05, -0.08);
-
-    const textPrimary   = textC;
-    const textSecondary = isDark ? hslAdjust(textC, 0, -0.10, -0.12) : hslAdjust(textC, 0, -0.05,  0.18);
-    const textMuted     = isDark ? hslAdjust(textC, 0, -0.20, -0.25) : hslAdjust(textC, 0, -0.15,  0.35);
-    const textInvert    = isDark ? bgBody : { r: 255, g: 255, b: 255 };
-
-    const chartPassed    = accent;
-    const chartRemaining = bgSurfaceAlt;
-    const chartLabDone   = bySat[1] || accent;
-    const chartLabLeft   = bySat[2] || accentBorder;
-
-    const friendCommonBg   = bySat[1] || accent;
-    const friendCommonText = { r: 255, g: 255, b: 255 };
-    const friendWarningBg  = bySat[2] || accentHover;
-    const friendWarningText= { r: 255, g: 255, b: 255 };
-    const friendSameBg     = accentSoft;
-    const friendSameText   = isDark ? textPrimary : accentBorder;
-    const friendInfoBg     = accentSoft;
-    const friendInfoText   = isDark ? textSecondary : accentHover;
-
-    const statusGreen     = { r: 16,  g: 185, b: 129 };
-    const statusOrange    = { r: 245, g: 158, b: 11  };
-    const statusRed       = { r: 239, g: 68,  b: 68  };
-    const statusCompleted = isDark ? { r: 100, g: 116, b: 139 } : { r: 148, g: 163, b: 184 };
-
-    return {
-        '--bg-body':           rgbToHex(bgBody),
-        '--bg-surface':        rgbToHex(bgSurface),
-        '--bg-surface-alt':    rgbToHex(bgSurfaceAlt),
-        '--bg-surface-soft':   rgbToHex(bgSurfaceSoft),
-        '--bg-hover':          rgbToHex(bgHover),
-        '--border-color':      rgbToHex(borderColor),
-        '--border-soft':       rgbToHex(borderSoft),
-        '--text-primary':      rgbToHex(textPrimary),
-        '--text-secondary':    rgbToHex(textSecondary),
-        '--text-muted':        rgbToHex(textMuted),
-        '--text-invert':       rgbToHex(textInvert),
-        '--accent':            rgbToHex(accent),
-        '--accent-hover':      rgbToHex(accentHover),
-        '--accent-soft':       rgbToHex(accentSoft),
-        '--accent-border':     rgbToHex(accentBorder),
-        '--status-green':      rgbToHex(statusGreen),
-        '--status-orange':     rgbToHex(statusOrange),
-        '--status-red':        rgbToHex(statusRed),
-        '--status-completed':  rgbToHex(statusCompleted),
-        '--chart-passed':      rgbToHex(chartPassed),
-        '--chart-remaining':   rgbToHex(chartRemaining),
-        '--chart-lab-done':    rgbToHex(chartLabDone),
-        '--chart-lab-left':    rgbToHex(chartLabLeft),
-        '--friend-common-bg':  rgbToHex(friendCommonBg),
-        '--friend-common-text':rgbToHex(friendCommonText),
-        '--friend-warning-bg': rgbToHex(friendWarningBg),
-        '--friend-warning-text':rgbToHex(friendWarningText),
-        '--friend-same-bg':    rgbToHex(friendSameBg),
-        '--friend-same-text':  rgbToHex(friendSameText),
-        '--friend-info-bg':    rgbToHex(friendInfoBg),
-        '--friend-info-text':  rgbToHex(friendInfoText),
-    };
-}
-
-// ============================================================
-//  ПРИМЕНЕНИЕ / СБРОС
-// ============================================================
-
-async function applyCustomTheme() {
-    const token = ++_customThemeApplyToken;
-    const data = loadCustomTheme();
-
-    for (const key in data.colors) {
-        document.documentElement.style.setProperty(key, data.colors[key]);
-    }
-
-    let resolvedPhotoUrl = '';
-    if (data.photoId) {
-        if (data.photoId.startsWith('url:')) {
-            resolvedPhotoUrl = data.photoId.slice(4);
-        } else if (data.photoId.startsWith('idb:')) {
-            try {
-                resolvedPhotoUrl = await idbGetPhoto(data.photoId.slice(4)) || '';
-            } catch (e) { console.warn('[custom-theme] idb get failed', e); }
-        }
-    }
-
-    if (token !== _customThemeApplyToken) return;
-
-    _applyCustomBackground(data, resolvedPhotoUrl);
-
-    if (typeof refreshChartsTheme === 'function') refreshChartsTheme();
-}
-
-function _applyCustomBackground(data, resolvedPhotoUrl) {
-    const bgBody = data.colors['--bg-body'] || '#f8fafc';
-    const layers = [], sizes = [], repeats = [], attaches = [];
-
-    if (resolvedPhotoUrl) {
-        const overlayAlpha = Math.max(0, Math.min(1, 1 - data.photoOpacity));
-        layers.push(`linear-gradient(${hexToRgba(bgBody, overlayAlpha)}, ${hexToRgba(bgBody, overlayAlpha)})`);
-        sizes.push('cover'); repeats.push('no-repeat'); attaches.push('fixed');
-        layers.push(`url("${resolvedPhotoUrl}")`);
-        sizes.push('cover'); repeats.push('no-repeat'); attaches.push('fixed');
-    }
-
-    const stickerUrl = data.stickers
-        ? stickersToSvgDataUri(data.stickers, data.stickersOpacity)
-        : null;
-    if (stickerUrl) {
-        layers.push(`url("${stickerUrl}")`);
-        sizes.push('180px 180px'); repeats.push('repeat'); attaches.push('fixed');
-    }
-
-    document.body.style.backgroundImage = layers.length ? layers.join(', ') : '';
-    document.body.style.backgroundSize = sizes.join(', ');
-    document.body.style.backgroundRepeat = repeats.join(', ');
-    document.body.style.backgroundAttachment = attaches.join(', ');
-}
-
-function clearCustomThemeInline() {
-    _customThemeApplyToken++;
-    const data = loadCustomTheme();
-    for (const key in data.colors) {
-        document.documentElement.style.removeProperty(key);
-    }
-    document.body.style.backgroundImage = '';
-    document.body.style.backgroundSize = '';
-    document.body.style.backgroundRepeat = '';
-    document.body.style.backgroundAttachment = '';
-}
-
-async function cleanupPhotoIfUnused(key) {
-    if (!key) return;
-    const usedKeys = new Set();
-    const current = loadCustomTheme();
-    if (current.photoId && current.photoId.startsWith('idb:')) {
-        usedKeys.add(current.photoId.slice(4));
-    }
-    const presets = loadCustomThemePresets();
-    presets.forEach(p => {
-        if (p && p.data && p.data.photoId && p.data.photoId.startsWith('idb:')) {
-            usedKeys.add(p.data.photoId.slice(4));
-        }
-    });
-    if (usedKeys.has(key)) return;
-    try { await idbDeletePhoto(key); console.log('[custom-theme] removed orphan photo', key); }
-    catch (e) { console.warn('[custom-theme] orphan cleanup failed', e); }
-}
-
-// ============================================================
-//  ВЗЯТЬ ЗА ОСНОВУ ГОТОВУЮ ТЕМУ
-// ------------------------------------------------------------
-//  1. Временно применяем выбранную тему к <html>.
-//  2. Считываем вычисленные CSS-переменные через getComputedStyle.
-//  3. Возвращаем исходное состояние (включая inline-переменные
-//     активной кастомной темы, если они были).
-//  4. Сохраняем прочитанные значения как кастомную тему.
-//  5. Переключаем активную тему на 'custom'.
-//
-//  Если сейчас активна custom-тема, перед чтением снимаем её
-//  inline-переменные — иначе они перебьют базовую тему (inline
-//  style всегда выигрывает у [data-theme] селекторов).
-// ============================================================
-
-function applyBaseThemeAsCustom(baseThemeId, baseThemeLabel) {
-    if (!baseThemeId || baseThemeId === 'custom') return;
-
-    const root = document.documentElement;
-    const prevDataTheme = root.getAttribute('data-theme');
-    const prevBsTheme   = root.getAttribute('data-bs-theme');
-
-    // Переменные, которые хранит кастомная тема
-    const trackedVars = Object.keys(defaultCustomTheme().colors);
-    // Служебные переменные, которые тоже хотим унаследовать
-    // (шрифт заголовков для особых тем, цвета тултипов, границы плашек)
-    const extraVars = [
-        '--font-display',
-        '--chart-tooltip-bg',
-        '--chart-tooltip-text',
-        '--friend-same-border',
-        '--friend-info-border',
-        '--event-color',
-        '--custom-pair-color',
-    ];
-    const allVars = trackedVars.concat(extraVars);
-
-    // Если сейчас активна custom-тема — в inline-стилях лежат её переменные.
-    // Снимаем их, чтобы базовая тема прочиталась корректно.
-    const savedInline = {};
-    allVars.forEach(v => {
-        const val = root.style.getPropertyValue(v);
-        if (val) {
-            savedInline[v] = val;
-            root.style.removeProperty(v);
-        }
-    });
-
-    // Применяем базовую тему
-    root.setAttribute('data-theme', baseThemeId);
-    root.setAttribute('data-bs-theme', baseThemeId === 'dark' ? 'dark' : 'light');
-
-    // Читаем вычисленные значения. getComputedStyle форсирует reflow,
-    // поэтому все новые значения уже актуальны.
-    const computed = getComputedStyle(root);
-    const newColors = {};
-    allVars.forEach(v => {
-        const val = computed.getPropertyValue(v).trim();
-        if (val) newColors[v] = val;
-    });
-
-    // Возвращаем атрибуты и inline-переменные на место
-    root.setAttribute('data-theme', prevDataTheme);
-    root.setAttribute('data-bs-theme', prevBsTheme);
-    for (const k in savedInline) {
-        root.style.setProperty(k, savedInline[k]);
-    }
-
-    // Сохраняем как новую кастомную тему — цвета базовой заменяют цвета свои
-    const data = loadCustomTheme();
-    data.colors = Object.assign({}, data.colors, newColors);
-    saveCustomTheme(data);
-
-    // Переключаем активную тему на 'custom', если ещё не там
-    if (typeof theme !== 'undefined' && theme !== 'custom') {
-        theme = 'custom';
-        localStorage.setItem('theme', 'custom');
-        const select = document.getElementById('settingsTheme');
-        if (select) select.value = 'custom';
-        if (typeof applyTheme === 'function') applyTheme();
-    } else {
-        applyCustomTheme();
-    }
-
-    renderCustomThemePanel();
-
-    if (typeof showUpdateNotification === 'function') {
-        showUpdateNotification(`🎨 Основа: ${baseThemeLabel || baseThemeId}`);
-    }
-}
-
-function applyBaseThemeFromSelect() {
-    const select = document.getElementById('customThemeBaseSelect');
-    if (!select) return;
-
-    const val = select.value;
-    if (!val) {
-        alert('Сначала выберите тему из списка');
-        return;
-    }
-
-    const label = select.options[select.selectedIndex].text;
-
-    if (!confirm(`Взять тему «${label}» за основу?\n\nТекущие цвета своей темы будут заменены. Фото, стикеры и сохранённые пресеты не пострадают.`)) {
-        return;
-    }
-
-    applyBaseThemeAsCustom(val, label);
-
-    // Сбрасываем селект, чтобы его можно было использовать снова
-    select.value = '';
-}
-
-// ============================================================
-//  СЕКЦИИ — СВОРАЧИВАНИЕ / РАЗВОРАЧИВАНИЕ
-// ============================================================
-
-function loadCustomSections() {
-    try {
-        const raw = localStorage.getItem(CUSTOM_THEME_SECTIONS_KEY);
-        const parsed = raw ? JSON.parse(raw) : {};
-        return (parsed && typeof parsed === 'object') ? parsed : {};
-    } catch (e) { return {}; }
-}
-
-function saveCustomSections(state) {
-    try { localStorage.setItem(CUSTOM_THEME_SECTIONS_KEY, JSON.stringify(state)); } catch (e) {}
-}
-
-function toggleCustomSection(name) {
-    const body  = document.getElementById('custom-section-' + name);
-    const arrow = document.getElementById('arrow-' + name);
-    if (!body) return;
-
-    const isHidden = body.style.display === 'none';
-    body.style.display = isHidden ? 'block' : 'none';
-    if (arrow) arrow.textContent = isHidden ? '▾' : '▸';
-
-    const state = loadCustomSections();
-    state[name] = isHidden ? 'open' : 'closed';
-    saveCustomSections(state);
-}
-
-function restoreCustomSections() {
-    const state = loadCustomSections();
-    ['colors', 'bg', 'stickers'].forEach(name => {
-        const body  = document.getElementById('custom-section-' + name);
-        const arrow = document.getElementById('arrow-' + name);
-        if (!body) return;
-        const isOpen = state[name] === 'open';
-        body.style.display = isOpen ? 'block' : 'none';
-        if (arrow) arrow.textContent = isOpen ? '▾' : '▸';
-    });
-}
-
-// ============================================================
-//  UI — ПАНЕЛЬ ЦВЕТОВ
-// ============================================================
-
-function renderCustomThemePanel() {
-    const container = document.getElementById('customThemePickers');
-    if (container) {
-        const data = loadCustomTheme();
-        let html = '';
-
-        CUSTOM_THEME_FIELDS.forEach(group => {
-            const isBasic = !!group.basic;
-            if (!isBasic && !_customThemeAdvancedShown) return;
-
-            html += `<div class="custom-picker-group">${group.group}</div>`;
-            group.fields.forEach(f => {
-                const val = data.colors[f.key] || '#000000';
-                html += `
-                    <div class="custom-picker-row">
-                        <input type="color" value="${val}" data-key="${f.key}" oninput="onCustomColorChange(this)">
-                        <label>${f.label}</label>
-                    </div>`;
-            });
-        });
-
-        container.innerHTML = html;
-    }
-
-    const toggleBtn = document.getElementById('customThemeAdvancedToggle');
-    if (toggleBtn) {
-        toggleBtn.textContent = _customThemeAdvancedShown
-            ? '▲ Скрыть дополнительные цвета'
-            : '▼ Показать все цвета';
-    }
-
-    const data = loadCustomTheme();
-
-    const stickersInput = document.getElementById('customThemeStickers');
-    if (stickersInput) stickersInput.value = data.stickers || '';
-
-    const stOp = document.getElementById('customThemeStickersOpacity');
-    const stOpVal = document.getElementById('customThemeStickersOpacityVal');
-    if (stOp) {
-        stOp.value = Math.round(data.stickersOpacity * 100);
-        if (stOpVal) stOpVal.textContent = stOp.value;
-    }
-
-    const phOp = document.getElementById('customThemePhotoOpacity');
-    const phOpVal = document.getElementById('customThemePhotoOpacityVal');
-    if (phOp) {
-        phOp.value = Math.round(data.photoOpacity * 100);
-        if (phOpVal) phOpVal.textContent = phOp.value;
-    }
-
-    updatePhotoMetaText().catch(() => {});
-    renderCustomThemePresets();
-    restoreCustomSections();
-}
-
-function toggleCustomThemeAdvanced() {
-    _customThemeAdvancedShown = !_customThemeAdvancedShown;
-    localStorage.setItem(CUSTOM_THEME_ADVANCED_KEY, String(_customThemeAdvancedShown));
-    renderCustomThemePanel();
-}
-
-function updateCustomThemePanelVisibility() {
-    const panel = document.getElementById('customThemePanel');
-    if (!panel) return;
-    panel.style.display = (typeof theme !== 'undefined' && theme === 'custom') ? 'block' : 'none';
-}
-
-async function updatePhotoMetaText(precomputedBytes) {
-    const el = document.getElementById('customThemePhotoMeta');
-    if (!el) return;
-    const data = loadCustomTheme();
-    if (!data.photoId) { el.textContent = ''; return; }
-
-    if (data.photoId.startsWith('url:')) {
-        el.textContent = '🌐 Фото из старого пресета (по URL). Загрузите новое, чтобы заменить.';
-        return;
-    }
-    if (data.photoId.startsWith('idb:')) {
-        if (typeof precomputedBytes === 'number') {
-            el.textContent = `💾 Загружено, ~${Math.round(precomputedBytes / 1024)} КБ`;
-            return;
-        }
-        try {
-            const info = await idbGetPhotoInfo(data.photoId.slice(4));
-            if (info && typeof info.bytes === 'number') {
-                el.textContent = `💾 Загружено, ~${Math.round(info.bytes * 0.75 / 1024)} КБ`;
-            } else { el.textContent = '💾 Загружено'; }
-        } catch (e) { el.textContent = '💾 Загружено'; }
-    }
-}
-
-// ============================================================
-//  UI — ВЗЯТЬ ЦВЕТА С ФОТО
-// ============================================================
-
-function promptExtractColorsFromPhoto() {
-    const data = loadCustomTheme();
-    if (!data.photoId) return;
-    if (_lastPromptedPhotoId === data.photoId) return;
-    _lastPromptedPhotoId = data.photoId;
-
-    setTimeout(() => {
-        const ok = confirm(
-            '🎨 Подобрать цвета темы из этой фотографии?\n\n' +
-            'Текущие цвета будут заменены автоматически подобранной палитрой. ' +
-            'Фото, стикеры и их прозрачности сохранятся.'
-        );
-        if (ok) {
-            applyThemeFromPhoto(true);
-        }
-    }, 350);
-}
-
-async function applyThemeFromPhoto(skipConfirm = false) {
-    const data = loadCustomTheme();
-
-    if (!data.photoId) {
-        alert('Сначала загрузите фотографию в разделе «Фон».\n\nПосле загрузки вернитесь сюда и нажмите «Взять цвета с фото».');
-        return;
-    }
-
-    let photoUrl = '';
-    try {
-        if (data.photoId.startsWith('url:')) {
-            photoUrl = data.photoId.slice(4);
-        } else if (data.photoId.startsWith('idb:')) {
-            photoUrl = await idbGetPhoto(data.photoId.slice(4)) || '';
-        }
-    } catch (e) {
-        console.error('[custom-theme] get photo for extraction failed', e);
-    }
-
-    if (!photoUrl) {
-        alert('Не удалось прочитать фотографию.');
-        return;
-    }
-
-    try {
-        const palette = await extractPaletteFromImage(photoUrl);
-        if (!palette || palette.length === 0) {
-            alert('Не удалось извлечь цвета из фотографии.');
-            return;
-        }
-
-        const newColors = buildThemeFromPalette(palette);
-        if (!newColors) {
-            alert('Не удалось построить палитру.');
-            return;
-        }
-
-        if (!skipConfirm) {
-            if (!confirm('Применить цвета с фотографии?\n\nТекущие цвета будут заменены. Фото, стикеры и их прозрачности сохранятся.')) {
-                return;
-            }
-        }
-
-        data.colors = Object.assign({}, data.colors, newColors);
-        saveCustomTheme(data);
-        await applyCustomTheme();
-        renderCustomThemePanel();
-
-        if (typeof showUpdateNotification === 'function') {
-            showUpdateNotification('🎨 Цвета взяты с фотографии');
-        }
-    } catch (e) {
-        console.error('[custom-theme] palette extraction failed', e);
-        alert('Ошибка при извлечении цветов:\n\n' + (e && e.message ? e.message : 'неизвестная ошибка'));
-    }
-}
-
-// ============================================================
-//  UI — ПРЕСЕТЫ
-// ============================================================
-
-function renderCustomThemePresets() {
-    const container = document.getElementById('customThemePresets');
-    if (!container) return;
-    const presets = loadCustomThemePresets();
-
-    if (presets.length === 0) {
-        container.innerHTML = '<div class="small text-muted py-1">Сохранённых тем пока нет</div>';
-        return;
-    }
-
-    let html = '';
-    presets.forEach((p, i) => {
-        const safeName = String(p.name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        const hasPhoto = !!(p.data && p.data.photoId);
-        const badge = hasPhoto ? ' 📷' : '';
-        html += `
-            <div class="custom-preset-row">
-                <span class="custom-preset-name" title="${safeName}">${safeName}${badge}</span>
-                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="loadPreset(${i})" title="Загрузить">↺</button>
-                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deletePreset(${i})" title="Удалить">✕</button>
-            </div>`;
-    });
-    container.innerHTML = html;
-}
-
-function saveCurrentAsPreset() {
-    const nameInput = document.getElementById('customThemePresetName');
-    const name = (nameInput.value || '').trim();
-    if (!name) { alert('Введите название темы'); nameInput.focus(); return; }
-    if (name.length > 40) { alert('Слишком длинное название (макс. 40 символов)'); return; }
-
-    const presets = loadCustomThemePresets();
-    const current = loadCustomTheme();
-
-    const idx = presets.findIndex(p => p.name === name);
-    if (idx >= 0) {
-        if (!confirm(`Тема «${name}» уже существует. Перезаписать?`)) return;
-        presets[idx].data = JSON.parse(JSON.stringify(current));
-    } else {
-        presets.push({ name, data: JSON.parse(JSON.stringify(current)) });
-    }
-
-    const result = saveCustomThemePresets(presets);
-    if (!result.ok) {
-        alert('Не удалось сохранить: ' + (result.error && result.error.message ? result.error.message : 'неизвестная ошибка'));
-        return;
-    }
-    if (result.dropped > 0) {
-        alert(`Чтобы уместить новую тему, автоматически удалено старых: ${result.dropped}.`);
-    }
-
-    nameInput.value = '';
-    renderCustomThemePresets();
-}
-
-function loadPreset(index) {
-    const presets = loadCustomThemePresets();
-    const preset = presets[index];
-    if (!preset) return;
-
-    const data = JSON.parse(JSON.stringify(preset.data || {}));
-    saveCustomTheme(data);
-
-    if (typeof theme !== 'undefined' && theme !== 'custom') {
-        theme = 'custom';
-        localStorage.setItem('theme', 'custom');
-        const select = document.getElementById('settingsTheme');
-        if (select) select.value = 'custom';
-        if (typeof applyTheme === 'function') applyTheme();
-    } else {
-        applyCustomTheme();
-    }
-
-    renderCustomThemePanel();
-}
-
-function deletePreset(index) {
-    const presets = loadCustomThemePresets();
-    const preset = presets[index];
-    if (!preset) return;
-    if (!confirm(`Удалить сохранённую тему «${preset.name}»?`)) return;
-
-    const photoId = preset.data && preset.data.photoId;
-    presets.splice(index, 1);
-    saveCustomThemePresets(presets);
-
-    if (photoId && photoId.startsWith('idb:')) {
-        cleanupPhotoIfUnused(photoId.slice(4)).catch(() => {});
-    }
-    renderCustomThemePresets();
-}
-
-// ============================================================
-//  UI — ОБРАБОТЧИКИ
-// ============================================================
-
-function onCustomColorChange(input) {
-    const data = loadCustomTheme();
-    data.colors[input.dataset.key] = input.value;
-    saveCustomTheme(data);
-    applyCustomTheme();
-}
-
-function onCustomStickersChange(input) {
-    const data = loadCustomTheme();
-    data.stickers = input.value;
-    saveCustomTheme(data);
-    applyCustomTheme();
-}
-
-async function onCustomPhotoUpload(input) {
-    const file = input.files && input.files[0];
-    if (!file) return;
-
-    if (file.size > PHOTO_MAX_INPUT_BYTES) {
-        alert(`Файл слишком большой (${Math.round(file.size / 1024 / 1024)} МБ). Максимум — 10 МБ.`);
-        input.value = '';
-        return;
-    }
-
-    if (!(await idbIsAvailable())) {
-        alert('Хранилище IndexedDB недоступно в этом браузере (возможно, режим инкогнито).\n\nСвоя тема с фото не сможет сохраниться.');
-        input.value = '';
-        return;
-    }
-
-    try {
-        const dataUrl = await compressImage(file, PHOTO_MAX_DIM, PHOTO_QUALITY);
-        const bytes = dataUrlByteSize(dataUrl);
-
-        const key = genPhotoKey();
-        await idbPutPhoto(key, dataUrl);
-
-        const data = loadCustomTheme();
-        const oldId = data.photoId;
-        data.photoId = 'idb:' + key;
-        saveCustomTheme(data);
-
-        if (oldId && oldId.startsWith('idb:')) cleanupPhotoIfUnused(oldId.slice(4)).catch(() => {});
-
-        await applyCustomTheme();
-        updatePhotoMetaText(bytes).catch(() => {});
-
-        promptExtractColorsFromPhoto();
-
-    } catch (e) {
-        console.error('[custom-theme] photo upload failed', e);
-        alert('Не удалось обработать фото: ' + (e && e.message ? e.message : 'неизвестная ошибка'));
-    } finally {
-        input.value = '';
-    }
-}
-
-function clearCustomPhoto() {
-    const data = loadCustomTheme();
-    const oldId = data.photoId;
-    data.photoId = null;
-    saveCustomTheme(data);
-
-    const fileInput = document.getElementById('customThemePhotoFile');
-    if (fileInput) fileInput.value = '';
-
-    _lastPromptedPhotoId = null;
-
-    applyCustomTheme();
-
-    if (oldId && oldId.startsWith('idb:')) cleanupPhotoIfUnused(oldId.slice(4)).catch(() => {});
-    updatePhotoMetaText().catch(() => {});
-}
-
-function onCustomOpacityChange(input, which) {
-    const v = Math.max(0, Math.min(100, parseInt(input.value, 10) || 0)) / 100;
-    const data = loadCustomTheme();
-    if (which === 'stickers') {
-        data.stickersOpacity = v;
-        const label = document.getElementById('customThemeStickersOpacityVal');
-        if (label) label.textContent = input.value;
-    } else {
-        data.photoOpacity = v;
-        const label = document.getElementById('customThemePhotoOpacityVal');
-        if (label) label.textContent = input.value;
-    }
-    saveCustomTheme(data);
-    applyCustomTheme();
-}
-
-function resetCustomTheme() {
-    if (!confirm('Сбросить текущую свою тему к светлым цветам?\n\nСохранённые пресеты не пострадают.')) return;
-    const oldId = loadCustomTheme().photoId;
-    saveCustomTheme(defaultCustomTheme());
-    _lastPromptedPhotoId = null;
-    renderCustomThemePanel();
-    applyCustomTheme();
-    if (oldId && oldId.startsWith('idb:')) cleanupPhotoIfUnused(oldId.slice(4)).catch(() => {});
-}
-
-;
 // --- mobile.js ---
 (function () {
     "use strict";
@@ -7925,30 +6615,6 @@ function _gsBindFocusOnShow(modalEl) {
     });
 }
 
-function _gsUpdateHintForLoadState() {
-    const hint = document.getElementById('gsHint');
-    if (!hint) return;
-
-    const failed = (typeof groupsLoadFailed !== 'undefined') && groupsLoadFailed;
-    const loaded = (typeof groupsLoaded !== 'undefined') && groupsLoaded;
-
-    if (failed) {
-        hint.textContent = 'Справочник недоступен. Введите группу вручную и нажмите «Продолжить».';
-        hint.className = 'small text-warning mb-2';
-        return;
-    }
-    if (!loaded) {
-        hint.textContent = '⏳ Загрузка справочника…';
-        hint.className = 'small text-muted mb-2';
-        return;
-    }
-    hint.textContent = 'Начните вводить номер группы — например, ИВТ/б-24-1-о.';
-    hint.className = 'small text-muted mb-2';
-}
-
-document.addEventListener('ezh:groups-loaded', _gsUpdateHintForLoadState);
-document.addEventListener('ezh:groups-load-failed', _gsUpdateHintForLoadState);
-
 function openGroupSelectModal(forced = false) {
     try {
         console.log('[group-select] open, forced =', forced);
@@ -7984,7 +6650,7 @@ function openGroupSelectModal(forced = false) {
                                     <option value="2">2 подгруппа</option>
                                 </select>
                             </div>
-                            <div id="gsHint" class="small text-muted mb-2">Введите номер группы.</div>
+                            <div id="gsHint" class="small text-danger mb-2" style="display:none;"></div>
                         </div>
                         <div class="modal-footer border-0">
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="gsCancelBtn">Отмена</button>
@@ -8019,8 +6685,6 @@ function openGroupSelectModal(forced = false) {
         const subSel = document.getElementById('gsSubgroupSelect');
         if (subSel) subSel.value = savedSub;
 
-        _gsUpdateHintForLoadState();
-
         _groupSelectModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
         _groupSelectModalInstance.show();
 
@@ -8040,7 +6704,7 @@ async function saveGroupFromModal() {
     const subgroup = select.value || '0';
 
     if (!group) {
-        if (hint) { hint.textContent = 'Введите название группы'; hint.className = 'small text-danger mb-2'; }
+        if (hint) { hint.textContent = 'Введите название группы'; hint.style.display = 'block'; }
         input.focus();
         return;
     }
@@ -8059,7 +6723,7 @@ async function saveGroupFromModal() {
             console.error('[group-select] add custom failed:', e);
             if (hint) {
                 hint.textContent = 'Не удалось добавить группу. Проверьте формат (буквы, цифры, / . _ -).';
-                hint.className = 'small text-danger mb-2';
+                hint.style.display = 'block';
             }
             return;
         }

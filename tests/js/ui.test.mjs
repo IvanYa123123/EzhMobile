@@ -121,6 +121,19 @@ test('страница поднимается, настройки открыва
     'переключатель не должен быть скрыт');
   assert.ok(switcher.parentElement.classList.contains('d-flex'),
     'обёртка переключателя должна быть видимой (d-flex, без d-none)');
+  assert.ok(switcher.parentElement.classList.contains('my-2'),
+    'у переключателя одинаковые отступы сверху и снизу');
+  assert.ok(!switcher.parentElement.classList.contains('mt-3'),
+    'увеличенный верхний отступ убран');
+
+  // Подсказка «Начните вводить номер группы» удалена.
+  assert.equal((w.document.getElementById('gsHint').textContent || '').trim(), '',
+    'серая подсказка в модалке группы должна исчезнуть');
+
+  // Настройки переехали в нижнюю панель — пятая кнопка.
+  const navItems = w.document.querySelectorAll('#mobileBottomNav .mobile-nav-item');
+  assert.equal(navItems.length, 5, 'в нижней панели пять кнопок');
+  assert.ok(navItems[4].textContent.includes('Настройки'), 'последняя кнопка — настройки');
 
   w.eval("switchFriendsTeachersTab('teachers')");
   await until(() => w.document.querySelectorAll('#teachersCalendarsContainer .teacher-pair-card').length > 0,
@@ -132,6 +145,11 @@ test('страница поднимается, настройки открыва
   await until(() => (w.document.getElementById('friendsCalendarsContainer').textContent || '').includes('все подгруппы'),
     'подписи подгруппы у друга');
 
+  // Стрелки ↑/↓ перестановки друга удалены вместе с логикой порядка.
+  const friendArrows = w.document.querySelectorAll(
+    '#friendsCalendarsContainer [title="Выше"], #friendsCalendarsContainer [title="Ниже"]');
+  assert.equal(friendArrows.length, 0, 'стрелки перестановки у друга удалены');
+
   const referenceErrors = pageErrors.filter((e) => e.includes('ReferenceError'));
   assert.deepEqual(referenceErrors, [], `на странице были ReferenceError: ${referenceErrors.join('; ')}`);
   // Баг 4: после вкладки «День» стрелки листали на день, а не на неделю.
@@ -141,6 +159,17 @@ test('страница поднимается, настройки открыва
   w.eval('navigateNext()');
   const after = w.eval('currentBaseDate.getTime()');
   assert.equal(after - before, 7 * 24 * 60 * 60 * 1000, 'стрелка должна листать неделю');
+
+  // Статус-строка показывается и во вкладке «День».
+  w.eval('updateScheduleStatus()');
+  const statusDesktop = w.document.getElementById('scheduleStatus').textContent;
+  assert.equal(w.document.getElementById('dayScheduleStatus').textContent, statusDesktop,
+    'статус-строка должна быть и в «Дне»');
+  assert.ok(statusDesktop.length > 0, 'статус-строка не пустая при наличии пар');
+
+  // Кнопка «Настройки» в нижней панели привязана к openSettingsModal().
+  assert.ok((navItems[4].getAttribute('onclick') || '').includes('openSettingsModal'),
+    'кнопка «Настройки» в нижней панели открывает настройки');
 
   // Гасим фоновые запросы и таймеры приложения до закрытия окна.
   w.__closed = true;

@@ -20,7 +20,7 @@ MODULES = [
     "calendar-day", "calendar", "navigation", "status", "tasks", "friends",
     "custom-schedule", "widgets-stats", "widgets-labs", "lab-items", "widgets",
     "settings", "teachers", "search", "autocomplete", "notifications",
-    "refresh", "hotkeys", "custom-theme", "mobile", "group-select",
+    "refresh", "hotkeys", "mobile", "group-select",
     "moodle-pro", "main",
 ]
 

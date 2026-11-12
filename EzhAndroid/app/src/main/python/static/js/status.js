@@ -34,17 +34,23 @@ function _formatStatus(prefix, diffMs, absoluteTime) {
     return prefix;
 }
 
+function _setStatusText(text) {
+    ['scheduleStatus', 'dayScheduleStatus'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+    });
+}
+
 function updateScheduleStatus() {
-    let el = document.getElementById('scheduleStatus');
-    if (!el) return;
+    if (!document.getElementById('scheduleStatus') && !document.getElementById('dayScheduleStatus')) return;
 
     if (typeof showStatus !== 'undefined' && !showStatus) {
-        el.textContent = '';
+        _setStatusText('');
         return;
     }
 
     if (!cachedSchedule || cachedSchedule.length === 0) {
-        el.textContent = '';
+        _setStatusText('');
         return;
     }
 
@@ -70,7 +76,7 @@ function updateScheduleStatus() {
             let remaining = current.endMs - nowMs;
             let pairNum = current.n || '?';
             let endTime = fixTime(current.time_range.split(' - ')[1]);
-            el.textContent = _formatStatus(`Окончание ${pairNum} пары`, remaining, endTime);
+            _setStatusText(_formatStatus(`Окончание ${pairNum} пары`, remaining, endTime));
             return;
         }
 
@@ -78,7 +84,7 @@ function updateScheduleStatus() {
         if (nowMs < first.startMs) {
             let until = first.startMs - nowMs;
             let startTime = fixTime(first.time_range.split(' - ')[0]);
-            el.textContent = _formatStatus('Начало пар', until, startTime);
+            _setStatusText(_formatStatus('Начало пар', until, startTime));
             return;
         }
 
@@ -87,18 +93,18 @@ function updateScheduleStatus() {
             let until = next.startMs - nowMs;
             let startTime = fixTime(next.time_range.split(' - ')[0]);
             let pairNum = next.n || '?';
-            el.textContent = _formatStatus(`Начало ${pairNum} пары`, until, startTime);
+            _setStatusText(_formatStatus(`Начало ${pairNum} пары`, until, startTime));
             return;
         }
 
-        setStatusForNextDay(now, el);
+        setStatusForNextDay(now);
         return;
     }
 
-    setStatusForNextDay(now, el);
+    setStatusForNextDay(now);
 }
 
-function setStatusForNextDay(now, el) {
+function setStatusForNextDay(now) {
     let datesWithPairs = new Set(cachedSchedule.map(x => x.date));
 
     for (let i = 1; i <= 365; i++) {
@@ -116,12 +122,12 @@ function setStatusForNextDay(now, el) {
         let firstTime = fixTime(first.time_range.split(' - ')[0]);
 
         if (i === 1) {
-            el.textContent = _formatStatus('Начало пар завтра', null, firstTime);
+            _setStatusText(_formatStatus('Начало пар завтра', null, firstTime));
         } else {
-            el.textContent = _formatStatus(`Начало пар ${formatDateRu(dateStr)}`, null, firstTime);
+            _setStatusText(_formatStatus(`Начало пар ${formatDateRu(dateStr)}`, null, firstTime));
         }
         return;
     }
 
-    el.textContent = '';
+    _setStatusText('');
 }

@@ -67,6 +67,11 @@ if (!['min', 'hour', 'day', 'week'].includes(notificationUnit)) {
 }
 
 let theme = localStorage.getItem('theme') || 'light';
+// «Своя тема» удалена из интерфейса: сохранённое значение сбрасываем.
+if (theme === 'custom') {
+    theme = 'light';
+    try { localStorage.setItem('theme', 'light'); } catch (e) {}
+}
 
 let taskDatesSet = new Set();
 
@@ -132,13 +137,6 @@ function switchFriendsTeachersTab(tab) {
 // ============================================================
 //  МИНИ-ЗАГЛУШКИ ДЛЯ НЕОБЯЗАТЕЛЬНЫХ МОДУЛЕЙ
 // ============================================================
-
-function ezhJump() {
-    if (typeof goToToday === 'function') {
-        goToToday();
-    }
-}
-window.ezhJump = ezhJump;
 
 function renderSuggestions() {
     const el = document.getElementById('suggestionsContent');
