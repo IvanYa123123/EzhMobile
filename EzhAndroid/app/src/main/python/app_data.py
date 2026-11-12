@@ -81,7 +81,10 @@ limiter = Limiter(key_func=get_remote_address, app=app,
 @app.after_request
 def _headers(response):
     if response.status_code == 200 and request.path.startswith('/static/'):
-        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        # Сервер локальный, кэш ничего не экономит. immutable мешал обновлениям:
+        # после установки нового APK WebView отдавал старый app.bundle.js по тому
+        # же URL (?v=4). no-cache = всегда ревалидация, неизменённые файлы — 304.
+        response.headers['Cache-Control'] = 'no-cache'
     elif not response.headers.get('Cache-Control'):
         response.headers['Cache-Control'] = 'no-store'
 
