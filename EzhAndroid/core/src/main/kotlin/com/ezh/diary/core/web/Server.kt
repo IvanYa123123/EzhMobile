@@ -3,6 +3,7 @@ package com.ezh.diary.core.web
 import com.ezh.diary.core.EzhJson
 import com.ezh.diary.core.db.initSchema
 import com.ezh.diary.core.web.routes.backupRoutes
+import com.ezh.diary.core.web.routes.groupsRoutes
 import com.ezh.diary.core.web.routes.labsRoutes
 import com.ezh.diary.core.web.routes.miscRoutes
 import com.ezh.diary.core.web.routes.moodleRoutes
@@ -40,9 +41,11 @@ fun Application.ezhModule(deps: ApiDeps) {
     deps.files.ensure()
     deps.db.initSchema()
     routing {
+        deps.assets?.let { staticRoutes(it) }
         get("/api/health") {
             call.respond(HealthResponse(version = deps.version))
         }
+        groupsRoutes(deps)
         tasksRoutes(deps)
         labsRoutes(deps)
         miscRoutes(deps)
@@ -58,6 +61,11 @@ suspend fun ApplicationCall.respondError(status: HttpStatusCode, message: String
     respond(status, ErrorResponse(message))
 }
 
-/** Точка входа для :app (этап 7). Порт 5000 — прежний адрес Flask-сервера. */
-fun startEzhServer(deps: ApiDeps, port: Int = 5000) =
-    embeddedServer(CIO, port = port) { ezhModule(deps) }
+/**
+ * Точка входа для :app (этап 7). Порт 5000 — прежний адрес Flask-сервера.
+ * Возвращает управление сразу: сервер крутится в собственных потоках CIO.
+ */
+fun startEzhServer(deps: ApiDeps, port: Int = 5000) {
+    embeddedServer(CIO, port = port, host = "127.0.0.1") { ezhModule(deps) }
+        .start(wait = false)
+}

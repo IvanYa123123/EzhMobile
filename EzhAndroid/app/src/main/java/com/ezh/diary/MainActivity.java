@@ -28,9 +28,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
-import com.chaquo.python.Python;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -46,8 +44,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView splashStatus;
     private EzhBridge bridge;
 
-    private static boolean isPythonStarting = false;
-    private static final Object PY_START_LOCK = new Object();
+    private static boolean isServerStarting = false;
+    private static final Object SERVER_START_LOCK = new Object();
 
     private ValueCallback<Uri[]> pendingFileCallback;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
@@ -239,9 +237,9 @@ public class MainActivity extends AppCompatActivity {
 
         new Thread(() -> {
             if (!isServerRunning()) {
-                startPythonServer();
+                startServer();
             } else {
-                Log.d(TAG, "Python server is already running");
+                Log.d(TAG, "Server is already running");
             }
             pollServerAndLoad();
         }).start();
@@ -256,24 +254,21 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void startPythonServer() {
+    private void startServer() {
         // Гонка: поворот экрана пересоздаёт Activity, два потока могут
-        // одновременно пройти проверку и стартовать два waitress на
-        // порту 5000 → Address already in use. Синхронизируемся.
-        synchronized (PY_START_LOCK) {
-            if (isPythonStarting) return;
-            isPythonStarting = true;
+        // одновременно пройти проверку и стартовать два сервера на порту
+        // 5000 → Address already in use. Синхронизируемся.
+        synchronized (SERVER_START_LOCK) {
+            if (isServerStarting) return;
+            isServerStarting = true;
         }
 
-        final File dataDir = getFilesDir();
         new Thread(() -> {
             try {
-                runOnUiThread(() -> splashStatus.setText("Запуск Python-сервера..."));
-                Python py = Python.getInstance();
-                py.getModule("android_server")
-                  .callAttr("start_server", dataDir.getAbsolutePath());
-            } catch (final Exception e) {
-                Log.e(TAG, "Python server failed", e);
+                runOnUiThread(() -> splashStatus.setText("Запуск сервера..."));
+                EzhServer.start(getApplicationContext());
+            } catch (final Throwable e) {
+                Log.e(TAG, "Server failed", e);
                 StringWriter sw = new StringWriter();
                 e.printStackTrace(new PrintWriter(sw));
                 Throwable rc = e;
@@ -281,19 +276,13 @@ public class MainActivity extends AppCompatActivity {
                 final String rootMsg = rc.toString();
                 runOnUiThread(() -> {
                     if (splashStatus != null)
-                        splashStatus.setText("ОШИБКА PYTHON:\n" + rootMsg);
+                        splashStatus.setText("ОШИБКА СЕРВЕРА:\n" + rootMsg);
                 });
-            } finally {
-                // В нормальном режиме waitress.serve() не возвращает
-                // управление — finally не выполнится, isPythonStarting
-                // останется true и защитит от повторного старта.
-                // Если сервер упал или вернулся (что для serve() — аномалия),
-                // сбрасываем флаг под тем же локом.
-                synchronized (PY_START_LOCK) {
-                    isPythonStarting = false;
+                synchronized (SERVER_START_LOCK) {
+                    isServerStarting = false;
                 }
             }
-        }, "py-server").start();
+        }, "ezh-server").start();
     }
 
     private void pollServerAndLoad() {

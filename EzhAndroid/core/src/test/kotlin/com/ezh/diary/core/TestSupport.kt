@@ -6,10 +6,13 @@ import com.ezh.diary.core.moodle.MoodleHttp
 import com.ezh.diary.core.moodle.MoodleService
 import com.ezh.diary.core.planner.PlannerResult
 import com.ezh.diary.core.planner.SemesterPlanner
+import com.ezh.diary.core.planner.GroupsApi
+import com.ezh.diary.core.storage.Bundles
 import com.ezh.diary.core.storage.DataFiles
 import com.ezh.diary.core.teacher.TeacherService
 import com.ezh.diary.core.teacher.TeachersApi
 import com.ezh.diary.core.web.ApiDeps
+import com.ezh.diary.core.web.StaticAssets
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlinx.serialization.json.JsonObject
@@ -99,6 +102,9 @@ fun newDeps(
     teacherApi: TeachersApi = FakeTeachersApi(),
     moodleHttp: FakeMoodleHttp = FakeMoodleHttp(),
     version: String = "0.8",
+    assets: StaticAssets? = null,
+    bundles: Bundles = Bundles.Empty,
+    groupsApi: GroupsApi? = null,
 ): ApiDeps {
     val dir = createTempDirectory("ezh-api-test").toFile()
     val db = JdbcDb("jdbc:sqlite:" + File(dir, "planner.db").absolutePath)
@@ -117,5 +123,8 @@ fun newDeps(
             sleep = {},
             random = { 0.5 },
         ),
+        assets = assets,
+        bundles = bundles,
+        groupsApi = groupsApi,
     )
 }

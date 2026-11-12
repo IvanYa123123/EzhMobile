@@ -17,8 +17,12 @@
 
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
     id 'com.chaquo.python'
 }
+
+// Куда prepareWebAssets копирует статику и Group.txt для Ktor-сервера.
+def ezhWebAssetsDir = layout.buildDirectory.dir('generated/ezhAssets')
 
 // versionName синхронизирован с python/VERSION (его читает app.py).
 def ezhVersionName = '0.8'
@@ -93,6 +97,13 @@ android {
     // symbol: class BuildConfig`), поэтому включаем её явно.
     buildFeatures {
         buildConfig = true
+    }
+
+    sourceSets {
+        main {
+            // assets/static/*, assets/Group.txt и т.п. — см. prepareWebAssets.
+            assets.srcDir(ezhWebAssetsDir.get().asFile)
+        }
     }
 
     lint {
@@ -206,15 +217,42 @@ tasks.register('checkVendorAssets') {
     }
 }
 
+// Статика интерфейса и Group.txt нужны Ktor-серверу внутри APK.
+// Копируем только данные, а не весь Python-каталог (он уйдёт на этапе 8).
+tasks.register('prepareWebAssets', Copy) {
+    group = 'build'
+    description = 'Готовит assets/static и Group.txt для встроенного Ktor-сервера.'
+    dependsOn 'buildJsBundle'
+    from('src/main/python/static') {
+        into 'static'
+    }
+    from('src/main/python') {
+        include 'Group.txt'
+        include 'VERSION'
+        include 'teachers.json'
+    }
+    into ezhWebAssetsDir
+}
+
 tasks.named('preBuild').configure {
     dependsOn 'checkVendorAssets'
+    dependsOn 'prepareWebAssets'
 }
 
 // ============================================================
 //  ЗАВИСИМОСТИ
 // ============================================================
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
 dependencies {
+    // Kotlin-бэкенд: Ktor, планировщик, Moodle, преподаватели, SQLite-слой.
+    implementation project(':core')
+
     // Theme.MaterialComponents.DayNight.NoActionBar из values/themes.xml
     implementation 'com.google.android.material:material:1.12.0'
 
