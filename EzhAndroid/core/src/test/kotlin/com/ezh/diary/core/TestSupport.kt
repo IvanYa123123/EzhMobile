@@ -1,6 +1,9 @@
 package com.ezh.diary.core
 
 import com.ezh.diary.core.db.JdbcDb
+import com.ezh.diary.core.moodle.HttpResult
+import com.ezh.diary.core.moodle.MoodleHttp
+import com.ezh.diary.core.moodle.MoodleService
 import com.ezh.diary.core.planner.PlannerResult
 import com.ezh.diary.core.planner.SemesterPlanner
 import com.ezh.diary.core.storage.DataFiles
@@ -40,6 +43,35 @@ class FakeTeachersApi(
     }
 }
 
+/** Moodle-сессия-заглушка: отдаёт заранее заданные ответы по подстроке URL. */
+class FakeMoodleHttp : MoodleHttp {
+    private data class Route(val urlContains: String, val result: HttpResult)
+
+    private val routes = mutableListOf<Route>()
+    val requested = mutableListOf<String>()
+    var cookiesMap: Map<String, String> = emptyMap()
+    var onRequest: ((String) -> Unit)? = null
+
+    fun on(urlContains: String, text: String = "", status: Int = 200, finalUrl: String? = null) = apply {
+        routes += Route(
+            urlContains,
+            HttpResult(finalUrl ?: "https://do.sevsu.ru/mock", status, text),
+        )
+    }
+
+    private fun respond(url: String): HttpResult {
+        requested += url
+        onRequest?.invoke(url)
+        return routes.lastOrNull { url.contains(it.urlContains) }?.result
+            ?: HttpResult(url, 200, "")
+    }
+
+    override fun get(url: String, timeoutSeconds: Int): HttpResult = respond(url)
+    override fun postForm(url: String, fields: List<Pair<String, String>>, timeoutSeconds: Int): HttpResult = respond(url)
+    override fun postJson(url: String, json: String, timeoutSeconds: Int): HttpResult = respond(url)
+    override fun cookies(): Map<String, String> = LinkedHashMap(cookiesMap)
+}
+
 fun scheduleItem(
     date: String,
     lesson: String = "Математика",
@@ -65,6 +97,7 @@ fun fixturesDir(): File? = listOf("../../tests/fixtures", "../tests/fixtures", "
 fun newDeps(
     planner: SemesterPlanner = FakePlanner(),
     teacherApi: TeachersApi = FakeTeachersApi(),
+    moodleHttp: FakeMoodleHttp = FakeMoodleHttp(),
     version: String = "0.8",
 ): ApiDeps {
     val dir = createTempDirectory("ezh-api-test").toFile()
@@ -76,5 +109,13 @@ fun newDeps(
         files,
         planner,
         TeacherService(teacherApi, files.teachersFile, files.teacherSchedulesDir),
+        MoodleService(
+            httpFactory = { moodleHttp },
+            cookiesFile = files.moodleCookiesFile,
+            cacheFile = files.moodleCacheFile,
+            errorLogFile = files.moodleErrorLogFile,
+            sleep = {},
+            random = { 0.5 },
+        ),
     )
 }

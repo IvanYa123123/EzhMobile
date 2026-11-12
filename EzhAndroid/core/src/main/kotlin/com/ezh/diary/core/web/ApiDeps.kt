@@ -7,6 +7,7 @@ import com.ezh.diary.core.db.LabsRepo
 import com.ezh.diary.core.db.SubjectsRepo
 import com.ezh.diary.core.db.TasksRepo
 import com.ezh.diary.core.db.TrackedTeachersRepo
+import com.ezh.diary.core.moodle.MoodleService
 import com.ezh.diary.core.planner.SemesterPlanner
 import com.ezh.diary.core.storage.CustomGroups
 import com.ezh.diary.core.storage.DataFiles
@@ -24,6 +25,7 @@ class ApiDeps(
     val files: DataFiles,
     val planner: SemesterPlanner,
     val teacherService: TeacherService,
+    val moodleService: MoodleService,
     val limiter: RateLimiter = RateLimiter(),
     val clock: () -> Long = { System.currentTimeMillis() },
     val log: (String) -> Unit = {},

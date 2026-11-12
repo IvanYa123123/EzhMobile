@@ -5,6 +5,7 @@ import com.ezh.diary.core.db.initSchema
 import com.ezh.diary.core.web.routes.backupRoutes
 import com.ezh.diary.core.web.routes.labsRoutes
 import com.ezh.diary.core.web.routes.miscRoutes
+import com.ezh.diary.core.web.routes.moodleRoutes
 import com.ezh.diary.core.web.routes.scheduleRoutes
 import com.ezh.diary.core.web.routes.tasksRoutes
 import com.ezh.diary.core.web.routes.teachersRoutes
@@ -48,6 +49,7 @@ fun Application.ezhModule(deps: ApiDeps) {
         backupRoutes(deps)
         scheduleRoutes(deps)
         teachersRoutes(deps)
+        moodleRoutes(deps)
     }
 }
 

@@ -18,6 +18,9 @@ class DataFiles(rootDir: File) {
     val customGroupsFile: File get() = File(root, "custom_groups.json")
     val teachersFile: File get() = File(root, "teachers.json")
     val teacherSchedulesDir: File get() = File(root, "teacher_schedules")
+    val moodleCookiesFile: File get() = File(root, "moodle_cookies.json")
+    val moodleCacheFile: File get() = File(root, "moodle_stats_cache.json")
+    val moodleErrorLogFile: File get() = File(root, "moodle_errors.log")
 
     fun ensure() {
         root.mkdirs()
