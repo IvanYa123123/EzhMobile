@@ -151,7 +151,7 @@ public class MainActivity extends AppCompatActivity {
                     if (splashStatus != null && splashStatus.getVisibility() == View.VISIBLE) {
                         splashStatus.setText(
                             "Не загрузились vendor-ассеты (" + url + ", " + detail + ").\n" +
-                            "Запустите scripts/fetch_vendor_assets.py и пересоберите APK.");
+                            "Запустите scripts/fetch_vendor_assets.mjs и пересоберите APK.");
                     }
                 });
             }
@@ -286,7 +286,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void pollServerAndLoad() {
-        // 200 × 300 мс = 60 с. На холодном старте Chaquopy + waitress
+        // 200 × 300 мс = 60 с. На холодном старте Kotlin-сервер
         // на старом устройстве 24 с может не хватить — увеличили до 60.
         for (int i = 0; i < 200; i++) {
             try {

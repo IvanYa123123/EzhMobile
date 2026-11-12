@@ -1,9 +1,7 @@
 // Смоук-тест интерфейса: страница грузится целиком в jsdom против заглушечного
-// сервера (tests/stub_server.py). Проверяются именно те места, где уже были баги.
+// сервера (tests/js/stub-server.mjs). Проверяются именно те места, где уже были баги.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { copyFileSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -11,11 +9,9 @@ import { JSDOM, VirtualConsole } from 'jsdom';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
-const APP_DIR = path.join(ROOT, 'EzhAndroid', 'app', 'src', 'main', 'python');
 const PORT = 5099;
 const BASE = `http://127.0.0.1:${PORT}`;
 const GROUP = 'ПИН/б-24-2-о';
-const PYTHON = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -29,9 +25,9 @@ async function until(check, what, timeoutMs = 20000) {
   throw new Error(`не дождались: ${what}`);
 }
 
-async function startServer(dataDir) {
-  const child = spawn(PYTHON, [path.join(ROOT, 'tests', 'stub_server.py')], {
-    env: { ...process.env, EZH_DATA_DIR: dataDir, EZH_TEST_PORT: String(PORT) },
+async function startServer() {
+  const child = spawn(process.execPath, [path.join(HERE, 'stub-server.mjs')], {
+    env: { ...process.env, EZH_TEST_PORT: String(PORT) },
     stdio: 'ignore',
   });
   await until(async () => {
@@ -55,9 +51,7 @@ async function api(pathname, options = {}) {
 }
 
 test('страница поднимается, настройки открываются, стрелки листают недели', async (t) => {
-  const dataDir = mkdtempSync(path.join(tmpdir(), 'ezh-ui-'));
-  copyFileSync(path.join(APP_DIR, 'teachers.json'), path.join(dataDir, 'teachers.json'));
-  const server = await startServer(dataDir);
+  const server = await startServer();
   t.after(() => server.kill());
 
   await api('/api/tracked_teachers', {

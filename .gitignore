@@ -46,28 +46,11 @@ htmlcov/
 .tox/
 .nox/
 
-# ---------- Flask / runtime ----------
+# ---------- Скачиваемые сторонние ассеты интерфейса ----------
+# Качаются node scripts/fetch_vendor_assets.mjs (в CI — перед сборкой APK).
 
-# База данных и её WAL/SHM — создаются при первом запуске
-
-EzhAndroid/app/src/main/python/planner.db
-EzhAndroid/app/src/main/python/planner.db-wal
-EzhAndroid/app/src/main/python/planner.db-shm
-
-# Кэш расписаний, скачиваемый с сервера СевГУ во время работы
-
-EzhAndroid/app/src/main/python/schedules/
-EzhAndroid/app/src/main/python/teacher_schedules/
-
-# Пользовательские данные, генерируемые на устройстве
-
-EzhAndroid/app/src/main/python/custom_groups.json
-EzhAndroid/app/src/main/python/.sync_times.json
-
-# Скачиваемые сторонние ассеты интерфейса (scripts/fetch_vendor_assets.py)
-
-EzhAndroid/app/src/main/python/static/vendor/
-EzhAndroid/app/src/main/python/static/fonts/*.woff2
+EzhAndroid/app/src/main/assets/static/vendor/
+EzhAndroid/app/src/main/assets/static/fonts/*.woff2
 
 # ---------- Android / Gradle ----------
 
@@ -103,12 +86,6 @@ signing.properties
 *.ap_
 *.dex
 *.class
-
-# ---------- Chaquopy ----------
-
-# Собранные нативные библиотеки Python — пересоздаются при сборке
-
-EzhAndroid/app/src/main/python/.chaquopy/
 
 # ---------- Node (на случай появления тулинга) ----------
 

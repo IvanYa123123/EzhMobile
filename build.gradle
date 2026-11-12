@@ -1,17 +1,10 @@
 // build.gradle (корневой) — только объявление версий плагинов.
-// Chaquopy 17.2.0 — актуальная стабильная ветка:
-//   • Python 3.10 … 3.15
-//   • Android Gradle Plugin 7.3 … 9.4
-//   • minSdk >= 24
-// AGP 8.13.0 — последняя стабильная ветка 8.x: без breaking changes AGP 9,
-// проверенная связка с Chaquopy, требует JDK 17 и Gradle 8.13.
+// AGP 8.13.0 — последняя стабильная ветка 8.x, требует JDK 17 и Gradle 8.13.
 //
 // Kotlin: :core — чистый JVM (kotlin.jvm), :app — Kotlin + Java (kotlin.android).
-// Python/Chaquopy ещё подключён в :app до этапа 8.
 
 plugins {
     id 'com.android.application'                 version '8.13.0' apply false
-    id 'com.chaquo.python'                       version '17.2.0' apply false
     id 'org.jetbrains.kotlin.android'            version '2.1.21' apply false
     id 'org.jetbrains.kotlin.jvm'                version '2.1.21' apply false
     id 'org.jetbrains.kotlin.plugin.serialization' version '2.1.21' apply false

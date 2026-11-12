@@ -19,8 +19,8 @@ import java.util.Map;
  * AlarmManager очищается при ребуте — все PendingIntent теряются.
  * EzhBridge при планировании кладёт в SharedPreferences спецификацию
  * каждого уведомления под ключом "spec:<id>". Здесь мы эти
- * спецификации читаем обратно и заново ставим алярмы — без поднятия
- * Python и без ожидания открытия приложения.
+ * спецификации читаем обратно и заново ставим алярмы — без запуска
+ * сервера и без ожидания открытия приложения.
  */
 public class BootReceiver extends BroadcastReceiver {
     private static final String TAG = "EzhBoot";

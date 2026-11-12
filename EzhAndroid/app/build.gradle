@@ -9,24 +9,17 @@
 //     включает edge-to-edge, а MainActivity не умеет WindowInsets: WebView
 //     и сплэш уехали бы под статус-бар, а adjustResize перестал бы работать.
 //     compileSdk при этом свежий (36) — можно пользоваться новыми API.
-//   • abiFilters — обязательное требование Chaquopy: интерпретатор Python
-//     это нативная библиотека. Оставлен только arm64-v8a: каждый лишний ABI
-//     (например x86_64 для эмулятора) добавляет ~12–16 МБ к APK.
 //   • vendor-ассеты (bootstrap/chart/inter) проверяются до сборки:
 //     без них index.html получает 404 и renderCalendar() не вызывается.
 
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    id 'com.chaquo.python'
 }
 
-// Куда prepareWebAssets копирует статику и Group.txt для Ktor-сервера.
-def ezhWebAssetsDir = layout.buildDirectory.dir('generated/ezhAssets')
-
-// versionName синхронизирован с python/VERSION (его читает app.py).
+// versionName берётся из assets/VERSION (файл кладётся в APK как есть).
 def ezhVersionName = '0.8'
-def versionFile = file('src/main/python/VERSION')
+def versionFile = file('src/main/assets/VERSION')
 if (versionFile.exists()) {
     def raw = versionFile.text.trim()
     if (raw) ezhVersionName = raw
@@ -52,14 +45,6 @@ android {
         targetSdk 34
         versionCode ezhVersionCode
         versionName ezhVersionName
-
-        ndk {
-            // Только arm64: этого достаточно для телефонов, а второй ABI
-            // (x86_64 для эмулятора) почти удваивает размер APK, т.к. внутрь
-            // кладётся ещё один Python-рантайм. Для сборки под эмулятор
-            // добавьте 'x86_64' в список и соберите debug-вариант.
-            abiFilters 'arm64-v8a'
-        }
     }
 
     signingConfigs {
@@ -99,13 +84,6 @@ android {
         buildConfig = true
     }
 
-    sourceSets {
-        main {
-            // assets/static/*, assets/Group.txt и т.п. — см. prepareWebAssets.
-            assets.srcDir(ezhWebAssetsDir.get().asFile)
-        }
-    }
-
     lint {
         // assembleDebug/Release lint не запускают, но `./gradlew build` — да.
         // Не валим сборку на косметике (например, на отсутствии PNG-иконок
@@ -116,87 +94,34 @@ android {
 }
 
 // ============================================================
-//  CHAQUOPY
-// ============================================================
-
-chaquopy {
-    defaultConfig {
-        // Python 3.11: под него в репозитории Chaquopy есть готовые wheel'ы
-        // для lxml (единственная зависимость с нативным кодом).
-        // Минорная версия интерпретатора на машине сборки должна совпадать —
-        // иначе pip не запустится (см. buildPython ниже).
-        version = '3.11'
-
-        // Если Python 3.11 не в PATH — раскомментируйте и поправьте путь.
-        // Windows:   buildPython 'C:/Python311/python.exe'
-        // Windows:   buildPython 'py', '-3.11'
-        // macOS/Linux: buildPython '/usr/bin/python3.11'
-
-        pip {
-            // Состав 1:1 с src/main/python/requirements.txt.
-            // Ставятся явно, а не через install '-r', чтобы не зависеть
-            // от того, относительно какой директории Gradle ищет файл.
-            install 'flask==3.1.3'
-            install 'waitress==3.0.2'
-            install 'requests==2.34.2'
-            install 'urllib3==2.8.0'
-            install 'beautifulsoup4==4.15.0'
-            install 'lxml==5.3.0'
-            install 'certifi==2026.10.23'
-            install 'flask-limiter==4.1.1'
-        }
-    }
-
-    sourceSets {
-        // Значение по умолчанию и так равно src/main/python; фиксируем явно,
-        // чтобы каталог Python-кода нельзя было случайно «увести» правкой
-        // android.sourceSets.
-        getByName('main') {
-            srcDir 'src/main/python'
-        }
-    }
-}
-
-// ============================================================
 //  ГЕЙТ ПЕРЕД СБОРКОЙ: vendor-ассеты обязаны существовать
 // ------------------------------------------------------------
-//  Chaquopy упаковывает src/main/python целиком как ассеты. Если
-//  static/vendor/bootstrap.min.css отсутствует, Flask отдаёт 404,
+//  Статика лежит в assets/static. Если
+//  static/vendor/bootstrap.min.css отсутствует, сервер отдаёт 404,
 //  window.bootstrap === undefined, первый же new bootstrap.Modal()
 //  бросает ReferenceError, и календарь остаётся пустым. Дешевле
 //  упасть на сборке, чем ловить белый экран на устройстве.
 // ============================================================
 
 def vendorAssets = [
-    'src/main/python/static/vendor/bootstrap.min.css',
-    'src/main/python/static/vendor/bootstrap.bundle.min.js',
-    'src/main/python/static/vendor/chart.umd.min.js',
-    'src/main/python/static/fonts/inter-variable.woff2',
-    'src/main/python/static/js/app.bundle.js',
+    'src/main/assets/static/vendor/bootstrap.min.css',
+    'src/main/assets/static/vendor/bootstrap.bundle.min.js',
+    'src/main/assets/static/vendor/chart.umd.min.js',
+    'src/main/assets/static/fonts/inter-variable.woff2',
+    'src/main/assets/static/js/app.bundle.js',
 ]
 
 // index.html подключает один app.bundle.js вместо 30 модулей.
-// Пакет пересобирается на каждой сборке APK; в репозитории лежит и готовая
-// копия, чтобы `python app.py` работал без gradle.
+// Пакет пересобирается на каждой сборке APK (нужен Node 20+).
 tasks.register('buildJsBundle') {
     group = 'build'
-    description = 'Собирает static/js/app.bundle.js из модулей интерфейса.'
+    description = 'Собирает assets/static/js/app.bundle.js из модулей интерфейса.'
     doLast {
-        def script = new File(rootProject.projectDir, 'scripts/build_js_bundle.py')
-        def baseDir = rootProject.projectDir
-        def interpreters = [['python3'], ['python'], ['py', '-3.11']]
-        for (cmd in interpreters) {
-            try {
-                exec {
-                    commandLine(cmd + [script.absolutePath])
-                    workingDir baseDir
-                }
-                return
-            } catch (Exception ignored) {
-                // пробуем следующий интерпретатор
-            }
+        def script = new File(rootProject.projectDir, 'scripts/build_js_bundle.mjs')
+        exec {
+            commandLine 'node', script.absolutePath
+            workingDir rootProject.projectDir
         }
-        logger.warn('Python не найден — используется уже собранный static/js/app.bundle.js')
     }
 }
 
@@ -210,33 +135,15 @@ tasks.register('checkVendorAssets') {
             throw new org.gradle.api.GradleException(
                 'Отсутствуют vendor-ассеты:\n  ' + missing.join('\n  ') +
                 '\n\nВыполните из корня репозитория:\n' +
-                '  python scripts/fetch_vendor_assets.py\n' +
+                '  node scripts/fetch_vendor_assets.mjs\n' +
                 'и повторите сборку.'
             )
         }
     }
 }
 
-// Статика интерфейса и Group.txt нужны Ktor-серверу внутри APK.
-// Копируем только данные, а не весь Python-каталог (он уйдёт на этапе 8).
-tasks.register('prepareWebAssets', Copy) {
-    group = 'build'
-    description = 'Готовит assets/static и Group.txt для встроенного Ktor-сервера.'
-    dependsOn 'buildJsBundle'
-    from('src/main/python/static') {
-        into 'static'
-    }
-    from('src/main/python') {
-        include 'Group.txt'
-        include 'VERSION'
-        include 'teachers.json'
-    }
-    into ezhWebAssetsDir
-}
-
 tasks.named('preBuild').configure {
     dependsOn 'checkVendorAssets'
-    dependsOn 'prepareWebAssets'
 }
 
 // ============================================================

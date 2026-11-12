@@ -27,10 +27,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '20'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
@@ -44,14 +44,14 @@ jobs:
         run: ./gradlew :core:test --no-daemon
 
       - name: Fetch vendor assets
-        run: python scripts/fetch_vendor_assets.py
+        run: node scripts/fetch_vendor_assets.mjs
 
       - name: Verify vendor assets (MUST EXIST)
         run: |
           echo "Проверка скачанных файлов..."
-          ls -la EzhAndroid/app/src/main/python/static/vendor/
-          ls -la EzhAndroid/app/src/main/python/static/fonts/
-          if [ ! -f "EzhAndroid/app/src/main/python/static/vendor/bootstrap.bundle.min.js" ]; then
+          ls -la EzhAndroid/app/src/main/assets/static/vendor/
+          ls -la EzhAndroid/app/src/main/assets/static/fonts/
+          if [ ! -f "EzhAndroid/app/src/main/assets/static/vendor/bootstrap.bundle.min.js" ]; then
             echo "ОШИБКА: bootstrap.bundle.min.js не найден!"
             exit 1
           fi
