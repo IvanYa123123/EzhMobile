@@ -67,6 +67,23 @@ class TasksRepo(private val db: Db) {
     fun distinctDates(): List<String> = db.transaction {
         query("SELECT DISTINCT date FROM tasks ORDER BY date").map { it.str("date") }
     }
+
+    fun listBetween(start: String, end: String): List<Task> = db.transaction {
+        query(
+            "SELECT id, date, text, status FROM tasks WHERE date BETWEEN ? AND ? ORDER BY id",
+            listOf(start, end),
+        ).map {
+            Task(it.int("id"), it.str("date"), it.str("text"), it.str("status"))
+        }
+    }
+
+    fun search(like: String, limit: Int = 50): List<Task> = db.transaction {
+        query(
+            "SELECT id, date, text, status FROM tasks WHERE text LIKE ? " +
+                "ORDER BY date DESC LIMIT ?",
+            listOf(like, limit),
+        ).map { Task(it.int("id"), it.str("date"), it.str("text"), it.str("status")) }
+    }
 }
 
 class FriendsRepo(private val db: Db) {
@@ -207,6 +224,63 @@ class CustomScheduleRepo(private val db: Db) {
     fun delete(id: Int): Boolean = db.transaction {
         update("DELETE FROM custom_schedule WHERE id = ?", listOf(id)) > 0
     }
+
+    /** PUT не меняет group_name — как в Flask-версии. */
+    fun updateContent(
+        id: Int,
+        baseDate: String,
+        timeRange: String,
+        lesson: String,
+        typeName: String,
+        teacher: String,
+        location: String,
+        isEvent: Boolean,
+        recurrence: String,
+        exceptions: String,
+    ): Boolean = db.transaction {
+        update(
+            """UPDATE custom_schedule SET
+                 base_date = ?, time_range = ?, lesson = ?, type_name = ?,
+                 teacher = ?, location = ?, is_event = ?, recurrence = ?, exceptions = ?
+               WHERE id = ?""",
+            listOf(
+                baseDate, timeRange, lesson, typeName, teacher, location,
+                if (isEvent) 1 else 0, recurrence, exceptions, id,
+            ),
+        ) > 0
+    }
+
+    fun byGroup(groupName: String): List<CustomLesson> = db.transaction {
+        query(
+            """SELECT id, group_name, base_date, time_range, lesson, type_name,
+                      teacher, location, is_event, recurrence, exceptions
+               FROM custom_schedule WHERE group_name = ? ORDER BY id""",
+            listOf(groupName),
+        ).map { it.toLesson() }
+    }
+
+    fun search(like: String, limit: Int = 50): List<CustomLesson> = db.transaction {
+        query(
+            """SELECT id, group_name, base_date, time_range, lesson, type_name,
+                      teacher, location, is_event, recurrence, exceptions
+               FROM custom_schedule WHERE lesson LIKE ? ORDER BY base_date DESC LIMIT ?""",
+            listOf(like, limit),
+        ).map { it.toLesson() }
+    }
+
+    private fun Row.toLesson() = CustomLesson(
+        int("id"),
+        str("group_name"),
+        str("base_date"),
+        str("time_range"),
+        str("lesson"),
+        str("type_name"),
+        str("teacher"),
+        str("location"),
+        int("is_event") != 0,
+        str("recurrence"),
+        str("exceptions"),
+    )
 }
 
 class TrackedTeachersRepo(private val db: Db) {
@@ -307,5 +381,52 @@ class LabsRepo(private val db: Db) {
 
     fun delete(id: Int): Boolean = db.transaction {
         update("DELETE FROM lab_items WHERE id = ?", listOf(id)) > 0
+    }
+
+    fun get(id: Int): LabItem? = db.transaction {
+        query(
+            """SELECT id, group_name, subject, idx, title, completed
+               FROM lab_items WHERE id = ?""",
+            listOf(id),
+        ).firstOrNull()?.let {
+            LabItem(
+                it.int("id"),
+                it.str("group_name"),
+                it.str("subject"),
+                it.int("idx"),
+                it.str("title"),
+                it.int("completed") != 0,
+            )
+        }
+    }
+
+    fun setTitle(id: Int, title: String): Boolean = db.transaction {
+        update("UPDATE lab_items SET title = ? WHERE id = ?", listOf(title, id)) > 0
+    }
+
+    /** Пересчёт lab_progress по lab_items — порт _recalc_lab_progress. */
+    fun recalc(groupName: String, subject: String) = db.transaction {
+        val row = query(
+            """SELECT COUNT(*) AS total, COALESCE(SUM(completed), 0) AS done
+               FROM lab_items WHERE group_name = ? AND subject = ?""",
+            listOf(groupName, subject),
+        ).first()
+        val total = row.int("total")
+        val done = row.int("done")
+        if (total == 0) {
+            update(
+                "DELETE FROM lab_progress WHERE group_name = ? AND subject = ?",
+                listOf(groupName, subject),
+            )
+        } else {
+            update(
+                """INSERT INTO lab_progress (group_name, subject, completed, total)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(group_name, subject) DO UPDATE SET
+                     completed = excluded.completed,
+                     total = excluded.total""",
+                listOf(groupName, subject, done, total),
+            )
+        }
     }
 }

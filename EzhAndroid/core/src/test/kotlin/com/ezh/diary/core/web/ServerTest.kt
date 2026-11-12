@@ -1,5 +1,6 @@
 package com.ezh.diary.core.web
 
+import com.ezh.diary.core.newDeps
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
@@ -10,7 +11,8 @@ import org.junit.Test
 class ServerTest {
     @Test
     fun healthReturnsVersion() = testApplication {
-        application { ezhModule("0.8") }
+        val deps = newDeps()
+        application { ezhModule(deps) }
 
         val response = client.get("/api/health")
 
@@ -20,7 +22,8 @@ class ServerTest {
 
     @Test
     fun healthUsesPassedVersion() = testApplication {
-        application { ezhModule("9.9.9-test") }
+        val deps = newDeps(version = "9.9.9-test")
+        application { ezhModule(deps) }
 
         val body = client.get("/api/health").bodyAsText()
 
@@ -29,7 +32,8 @@ class ServerTest {
 
     @Test
     fun unknownRouteIsNotFound() = testApplication {
-        application { ezhModule("0.8") }
+        val deps = newDeps()
+        application { ezhModule(deps) }
 
         val response = client.get("/api/nope")
 

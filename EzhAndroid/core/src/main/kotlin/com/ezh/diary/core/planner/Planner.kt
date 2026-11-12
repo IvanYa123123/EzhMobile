@@ -25,7 +25,9 @@ data class PlannerResult(val schedule: List<JsonObject>, val exhausted: Boolean)
 class Planner(
     private val api: ScheduleApi,
     private val nowNanos: () -> Long = System::nanoTime,
-) {
+) : SemesterPlanner {
+    override fun semester(group: String, targetSubgroup: String): PlannerResult =
+        semesterSchedule(group, targetSubgroup)
     val timeMap: Map<Int, String> = mapOf(
         1 to "08:30 - 10:00",
         2 to "10:10 - 11:40",

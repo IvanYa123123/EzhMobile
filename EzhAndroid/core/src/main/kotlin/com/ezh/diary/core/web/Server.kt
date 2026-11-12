@@ -1,6 +1,12 @@
 package com.ezh.diary.core.web
 
 import com.ezh.diary.core.EzhJson
+import com.ezh.diary.core.db.initSchema
+import com.ezh.diary.core.web.routes.backupRoutes
+import com.ezh.diary.core.web.routes.labsRoutes
+import com.ezh.diary.core.web.routes.miscRoutes
+import com.ezh.diary.core.web.routes.scheduleRoutes
+import com.ezh.diary.core.web.routes.tasksRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -22,18 +28,24 @@ data class ErrorResponse(val error: String)
 data class HealthResponse(val ok: Boolean = true, val version: String)
 
 /**
- * HTTP-модуль ядра. Пока единственный маршрут — /api/health (он же нужен
- * Android-обвязке для проверки, что сервер поднялся). Остальные группы
- * маршрутов будут подключаться сюда же по этапам.
+ * HTTP-модуль ядра. Все зависимости приходят через [ApiDeps] — так маршруты
+ * можно тестировать на JVM без Android, а в :app подставить Android-базу и файлы.
  */
-fun Application.ezhModule(version: String) {
+fun Application.ezhModule(deps: ApiDeps) {
     install(ContentNegotiation) {
         json(EzhJson)
     }
+    deps.files.ensure()
+    deps.db.initSchema()
     routing {
         get("/api/health") {
-            call.respond(HealthResponse(version = version))
+            call.respond(HealthResponse(version = deps.version))
         }
+        tasksRoutes(deps)
+        labsRoutes(deps)
+        miscRoutes(deps)
+        backupRoutes(deps)
+        scheduleRoutes(deps)
     }
 }
 
@@ -43,5 +55,5 @@ suspend fun ApplicationCall.respondError(status: HttpStatusCode, message: String
 }
 
 /** Точка входа для :app (этап 7). Порт 5000 — прежний адрес Flask-сервера. */
-fun startEzhServer(version: String, port: Int = 5000) =
-    embeddedServer(CIO, port = port) { ezhModule(version) }
+fun startEzhServer(deps: ApiDeps, port: Int = 5000) =
+    embeddedServer(CIO, port = port) { ezhModule(deps) }
