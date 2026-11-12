@@ -40,6 +40,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Core unit tests
+        run: ./gradlew :core:test --no-daemon
+
       - name: Fetch vendor assets
         run: python scripts/fetch_vendor_assets.py
 

@@ -6,11 +6,13 @@
 // AGP 8.13.0 — последняя стабильная ветка 8.x: без breaking changes AGP 9,
 // проверенная связка с Chaquopy, требует JDK 17 и Gradle 8.13.
 //
-// Kotlin-плагин здесь НЕ нужен: в проекте нет ни одного .kt/.kts файла,
-// весь нативный код — Java. Лишний classpath только увеличивает время
-// конфигурации и риск конфликта версий.
+// Kotlin нужен только для модуля :core (Kotlin-бэкенд, этап миграции).
+// Модуль :app пока остаётся Java + Chaquopy Python, Android-плагины
+// Kotlin не требуют — здесь объявлены версии, применяет их только :core.
 
 plugins {
-    id 'com.android.application' version '8.13.0' apply false
-    id 'com.chaquo.python'       version '17.2.0' apply false
+    id 'com.android.application'                 version '8.13.0' apply false
+    id 'com.chaquo.python'                       version '17.2.0' apply false
+    id 'org.jetbrains.kotlin.jvm'                version '2.1.21' apply false
+    id 'org.jetbrains.kotlin.plugin.serialization' version '2.1.21' apply false
 }

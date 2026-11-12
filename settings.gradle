@@ -23,3 +23,8 @@ rootProject.name = 'EzhMobile'
 
 include ':app'
 project(':app').projectDir = file('EzhAndroid/app')
+
+// JVM-ядро Kotlin-бэкенда: сервер, планировщик, парсеры, БД-абстракция.
+// Без Android API — тесты идут обычным `./gradlew :core:test`.
+include ':core'
+project(':core').projectDir = file('EzhAndroid/core')
