@@ -1,0 +1,7 @@
+{
+  // Настройки Pyright/Pylance: тесты лежат вне пакета приложения и импортируют
+  // модули из EzhAndroid/app/src/main/python, поэтому добавляем этот путь.
+  "include": ["tests"],
+  "extraPaths": ["EzhAndroid/app/src/main/python"],
+  "pythonVersion": "3.11"
+}

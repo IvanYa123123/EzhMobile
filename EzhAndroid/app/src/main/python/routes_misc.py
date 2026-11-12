@@ -37,24 +37,23 @@ def manage_friends():
         name = _s(data.get('name'))
         group_raw = _s(data.get('group'))
         subgroup = validate_subgroup(data.get('subgroup', '0'))
-        category = _s(data.get('category'))
         if not name or not group_raw:
             return jsonify({"error": "name and group required"}), 400
-        if len(name) > 100 or len(category) > 100:
+        if len(name) > 100:
             return jsonify({"error": "field too long"}), 400
         try:
             group = validate_group(group_raw)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         cursor = conn.execute(
-            "INSERT INTO friends (name, group_name, subgroup, category) VALUES (?, ?, ?, ?)",
-            (name, group, subgroup, category))
+            "INSERT INTO friends (name, group_name, subgroup) VALUES (?, ?, ?)",
+            (name, group, subgroup))
         conn.commit()
         return jsonify({"id": cursor.lastrowid})
     return jsonify([{
         "id": r["id"], "name": r["name"], "group": r["group_name"],
-        "subgroup": r["subgroup"], "category": r["category"] or "",
-    } for r in conn.execute("SELECT * FROM friends").fetchall()])
+        "subgroup": r["subgroup"],
+    } for r in conn.execute("SELECT id, name, group_name, subgroup FROM friends").fetchall()])
 
 @bp.route("/api/friends/<int:friend_id>", methods=["PUT", "DELETE"])
 @limiter.limit("120 per minute")
@@ -65,18 +64,17 @@ def update_or_delete_friend(friend_id):
         name = _s(data.get('name'))
         group_raw = _s(data.get('group'))
         subgroup = validate_subgroup(data.get('subgroup', '0'))
-        category = _s(data.get('category'))
         if not name or not group_raw:
             return jsonify({"error": "name and group required"}), 400
-        if len(name) > 100 or len(category) > 100:
+        if len(name) > 100:
             return jsonify({"error": "field too long"}), 400
         try:
             group = validate_group(group_raw)
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
         conn.execute(
-            "UPDATE friends SET name=?, group_name=?, subgroup=?, category=? WHERE id=?",
-            (name, group, subgroup, category, friend_id))
+            "UPDATE friends SET name=?, group_name=?, subgroup=? WHERE id=?",
+            (name, group, subgroup, friend_id))
         conn.commit()
         return jsonify({"success": True})
     conn.execute("DELETE FROM friends WHERE id=?", (friend_id,))

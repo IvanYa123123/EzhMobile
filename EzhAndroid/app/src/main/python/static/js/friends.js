@@ -169,45 +169,11 @@ async function syncFriendsSchedules(force = false) {
 // ============================================================
 //  МОДАЛКИ ДОБАВЛЕНИЯ / РЕДАКТИРОВАНИЯ
 // ------------------------------------------------------------
-//  Папки друзей: customCategories живут в state.js. Селект
-//  #friendCategory заполняется populateFriendCategorySelect().
-//  handleCategorySelect() вызывается из onchange в index.html.
-//  Раньше этих функций не было — селект был пуст, а клик по
-//  нему падал с ReferenceError.
-// ============================================================
-
-function populateFriendCategorySelect(selected) {
-    const sel = document.getElementById('friendCategory');
-    if (!sel) return;
-    const cats = Array.isArray(customCategories) ? customCategories : [];
-    let html = '<option value="">Без папки</option>';
-    cats.forEach(c => {
-        html += `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`;
-    });
-    html += '<option value="__add__">➕ Новая папка…</option>';
-    sel.innerHTML = html;
-    sel.value = (selected && cats.includes(selected)) ? selected : '';
-}
-
-function handleCategorySelect(select) {
-    if (!select) return;
-    if (select.value === '__add__') {
-        const name = prompt('Название папки:');
-        const clean = name ? String(name).trim().slice(0, 100) : '';
-        if (clean && !customCategories.includes(clean)) {
-            customCategories.push(clean);
-            try { localStorage.setItem('customCategories', JSON.stringify(customCategories)); } catch (e) {}
-        }
-        populateFriendCategorySelect(clean);
-    }
-}
-
 function showAddFriendModal() {
     editingFriendId = null;
     document.getElementById('friendName').value = '';
     document.getElementById('friendGroup').value = '';
     document.getElementById('friendSubgroup').value = '0';
-    populateFriendCategorySelect('');
     new bootstrap.Modal(document.getElementById('addFriendModal')).show();
 }
 
@@ -216,8 +182,6 @@ function editFriend(id, name, group, subgroup) {
     document.getElementById('friendName').value = name;
     document.getElementById('friendGroup').value = group;
     document.getElementById('friendSubgroup').value = subgroup;
-    const f = (friendsList || []).find(x => x.id === id);
-    populateFriendCategorySelect(f && f.category ? f.category : '');
     new bootstrap.Modal(document.getElementById('addFriendModal')).show();
 }
 
@@ -225,8 +189,6 @@ async function saveFriend() {
     let name = document.getElementById('friendName').value.trim();
     let group = document.getElementById('friendGroup').value.trim();
     let subgroup = document.getElementById('friendSubgroup').value;
-    let category = (document.getElementById('friendCategory').value || '').trim();
-    if (category === '__add__') category = '';
     if (!name || !group) return alert("Введите имя и группу");
 
     let myGroup    = (document.getElementById('groupSelect').value || '').trim();
@@ -248,8 +210,8 @@ async function saveFriend() {
     }
 
     try {
-        if (editingFriendId) await apiUpdateFriend(editingFriendId, {name, group, subgroup, category});
-        else await apiCreateFriend({name, group, subgroup, category});
+        if (editingFriendId) await apiUpdateFriend(editingFriendId, {name, group, subgroup});
+        else await apiCreateFriend({name, group, subgroup});
     } catch (e) { return alert("Не удалось сохранить"); }
     bootstrap.Modal.getInstance(document.getElementById('addFriendModal')).hide();
     await fetchFriends();

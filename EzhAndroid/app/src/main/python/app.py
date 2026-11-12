@@ -1,7 +1,7 @@
 """Точка входа Flask-приложения «Ежедневник СевГУ».
 
 Здесь только сборка приложения: blueprint'ы и dev-сервер. Пути, БД, кэши и
-лимитер живут в app_data.py, маршруты — в routes_*.py (п.4 §11).
+лимитер живут в app_data.py, маршруты — в routes_*.py.
 """
 from app_data import app
 from moodle_pro import moodle_bp

@@ -1,0 +1,7 @@
+# Зависимости для локальных тестов и CI (в APK не попадают).
+pytest>=8.0
+flask>=3.0
+flask-limiter>=3.5
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.3

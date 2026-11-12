@@ -1,0 +1,8 @@
+{
+  "name": "ezhmobile-ui-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}

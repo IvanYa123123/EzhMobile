@@ -32,8 +32,6 @@ let friendsSchedules = {};
 let draggingFriendId = null;
 let editingFriendId = null;
 let draggingDropdownFriendId = null;
-let customCategories = _safeParse(localStorage.getItem('customCategories'), []);
-if (!Array.isArray(customCategories)) customCategories = [];
 
 let customScheduleItems = [];
 

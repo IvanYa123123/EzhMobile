@@ -125,7 +125,7 @@ def init_db():
         conn.execute('CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, text TEXT, status TEXT)')
         conn.execute('CREATE TABLE IF NOT EXISTS lab_progress (group_name TEXT, subject TEXT, completed INTEGER, total INTEGER, PRIMARY KEY(group_name, subject))')
         conn.execute('CREATE TABLE IF NOT EXISTS lab_items (id INTEGER PRIMARY KEY AUTOINCREMENT, group_name TEXT, subject TEXT, idx INTEGER, title TEXT, completed INTEGER, UNIQUE(group_name, subject, idx))')
-        conn.execute('CREATE TABLE IF NOT EXISTS friends (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, group_name TEXT, subgroup TEXT, category TEXT)')
+        conn.execute('CREATE TABLE IF NOT EXISTS friends (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, group_name TEXT, subgroup TEXT)')
         conn.execute('CREATE TABLE IF NOT EXISTS subject_settings (subject TEXT PRIMARY KEY, custom_name TEXT, link TEXT, teacher TEXT, location TEXT)')
         conn.execute('CREATE TABLE IF NOT EXISTS custom_schedule (id INTEGER PRIMARY KEY AUTOINCREMENT, group_name TEXT, base_date TEXT, time_range TEXT, lesson TEXT, type_name TEXT, teacher TEXT, location TEXT, is_event INTEGER, recurrence TEXT, exceptions TEXT)')
         conn.execute('CREATE TABLE IF NOT EXISTS tracked_teachers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, slug TEXT UNIQUE)')

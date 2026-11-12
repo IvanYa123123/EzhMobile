@@ -1,4 +1,4 @@
-"""Маршруты преподавателей (п.4 §11)."""
+"""Маршруты преподавателей"""
 from flask import Blueprint, jsonify, request
 
 from app_data import _s, get_db, limiter, teacher_planner

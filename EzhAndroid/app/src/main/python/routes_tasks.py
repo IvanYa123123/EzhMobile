@@ -1,4 +1,4 @@
-"""Маршруты заметок и экспорта .ics (п.4 §11)."""
+"""Маршруты заметок и экспорта .ics"""
 from flask import Blueprint, Response, jsonify, request
 
 from app_data import _generate_tasks_ics, _s, _validate_base_date, get_db, limiter

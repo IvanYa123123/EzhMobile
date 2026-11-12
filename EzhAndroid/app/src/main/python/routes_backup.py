@@ -15,7 +15,7 @@ _BACKUP_APP_ID = "EZHednevnik"
 
 _BACKUP_TABLES = {
     'tasks': ('id', 'date', 'text', 'status'),
-    'friends': ('id', 'name', 'group_name', 'subgroup', 'category'),
+    'friends': ('id', 'name', 'group_name', 'subgroup'),
     'lab_progress': ('group_name', 'subject', 'completed', 'total'),
     'lab_items': ('id', 'group_name', 'subject', 'idx', 'title', 'completed'),
     'subject_settings': ('subject', 'custom_name', 'link', 'teacher', 'location'),

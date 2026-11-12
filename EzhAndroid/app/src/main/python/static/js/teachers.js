@@ -176,7 +176,7 @@ function onTeacherSearchInput(value) {
 }
 
 async function ensureAllTeachersLoaded() {
-    if (teachersAllList) return teachersAllList;
+    if (teachersAllList && teachersAllList.length) return teachersAllList;
     try {
         const resp = await _fetchWithTimeout(_api('/api/teachers'));
         if (!resp.ok) throw new Error('HTTP ' + resp.status);

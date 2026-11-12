@@ -63,6 +63,7 @@ class SevSUTeacherPlanner:
 
         self._lock = threading.RLock()
         self._bg_started = False
+        self._bg_teachers_started = False
 
     def get_teachers(self, force: bool = False) -> list:
         with self._lock:
@@ -71,20 +72,44 @@ class SevSUTeacherPlanner:
                 age = time.time() - cached.get('updated_at', 0)
                 if age < TEACHERS_LIST_TTL:
                     return self._clean_teachers(cached.get('items', []))
+            cached_items = self._clean_teachers(cached.get('items', [])) if cached else []
+
+        # Без сети не держим запрос: отдаём teachers.json сразу, а обновление
+        # с сайта уходит в фоновый поток.
+        if cached_items and not force:
+            self._start_teachers_refresh()
+            return cached_items
 
         items = self._clean_teachers(self._fetch_teachers_from_site())
         if items:
             with self._lock:
                 self._write_teachers_cache(items)
             return items
+        return cached_items
 
+    def _start_teachers_refresh(self):
         with self._lock:
-            cached = self._read_teachers_cache()
-            return self._clean_teachers(cached.get('items', [])) if cached else []
+            if self._bg_teachers_started:
+                return
+            self._bg_teachers_started = True
+
+        def _run():
+            try:
+                items = self._clean_teachers(self._fetch_teachers_from_site())
+                if items:
+                    with self._lock:
+                        self._write_teachers_cache(items)
+            except Exception as e:
+                print(f'[teachers] background refresh failed: {e}', flush=True)
+            finally:
+                with self._lock:
+                    self._bg_teachers_started = False
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def _fetch_teachers_from_site(self) -> list:
         try:
-            r = self.session.get(self.teachers_url, timeout=20)
+            r = self.session.get(self.teachers_url, timeout=(5, 15))
             if r.status_code != 200:
                 print(f'[teachers] HTTP {r.status_code}', flush=True)
                 return []
@@ -113,8 +138,9 @@ class SevSUTeacherPlanner:
             with open(tmp, 'w', encoding='utf-8') as f:
                 json.dump(
                     {'updated_at': time.time(), 'items': items},
-                    f, ensure_ascii=False,
+                    f, ensure_ascii=False, indent=2,
                 )
+                f.write('\n')
             os.replace(tmp, self.teachers_json)
         except OSError:
             pass
