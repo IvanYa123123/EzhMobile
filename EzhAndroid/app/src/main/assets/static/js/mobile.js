@@ -14,14 +14,14 @@
     }
 
     function switchTab(tab) {
-        if (tab !== "schedule" && tab !== "day" && tab !== "people" && tab !== "widgets") tab = "schedule";
+        if (tab !== "schedule" && tab !== "day" && tab !== "people" && tab !== "widgets" && tab !== "settings") tab = "schedule";
         document.body.setAttribute("data-mobile-tab", tab);
         try { localStorage.setItem(STORAGE_KEY, tab); } catch (e) {}
         updateNavActive(tab);
 
         // Уходя из «Дня», снимаем дневной режим: иначе стрелки
         // «Расписания» продолжают листать по одному дню.
-        if (tab !== 'day' && window.expandedDayDateStr) {
+        if (tab !== 'day' && tab !== 'settings' && window.expandedDayDateStr) {
             window.expandedDayDateStr = null;
             window._verticalDayOffset = 0;
             var fullCols = document.querySelectorAll('.day-col.fullscreen-day');
@@ -29,6 +29,10 @@
             var calEl = document.getElementById('calendar');
             if (calEl) calEl.classList.remove('has-fullscreen');
             if (typeof renderCalendar === 'function' && document.getElementById('calendar')) renderCalendar();
+        }
+
+        if (tab === 'settings' && typeof placeSettingsContent === 'function') {
+            placeSettingsContent('settingsTabHost');
         }
 
         if (tab === 'day') {
@@ -45,6 +49,61 @@
         if (isMobile()) window.scrollTo({ top: 0, behavior: "smooth" });
     }
     window.switchMobileTab = switchTab;
+
+    // ============================================================
+    //  СВАЙПЫ ← →
+    // ------------------------------------------------------------
+    //  «Расписание» и «Люди» — неделя назад/вперёд.
+    //  «День» — та же дата, но на 7 дней раньше/позже.
+    // ============================================================
+    var SWIPE_MIN = 60;
+
+    function bindSwipe(el, handler) {
+        if (!el) return;
+        var sx = 0, sy = 0, active = false;
+        el.addEventListener('touchstart', function (e) {
+            if (e.touches.length !== 1) { active = false; return; }
+            active = true; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+        }, { passive: true });
+        el.addEventListener('touchend', function (e) {
+            if (!active) return;
+            active = false;
+            var t = e.changedTouches && e.changedTouches[0];
+            if (!t) return;
+            var dx = t.clientX - sx, dy = t.clientY - sy;
+            if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+            handler(dx < 0 ? 1 : -1);
+        }, { passive: true });
+        el.addEventListener('touchcancel', function () { active = false; }, { passive: true });
+    }
+
+    function shiftWeekInDay(dir) {
+        if (!window.expandedDayDateStr) { changeWeek(dir); return; }
+        var parts = window.expandedDayDateStr.split('-').map(Number);
+        var target = new Date(parts[0], parts[1] - 1, parts[2]);
+        target.setDate(target.getDate() + dir * 7);
+        window._calDir = dir > 0 ? 'right' : 'left';
+        window.expandedDayDateStr = getLocalDateStr(target);
+        var dow = target.getDay() === 0 ? 7 : target.getDay();
+        var monday = new Date(target);
+        monday.setDate(monday.getDate() - (dow - 1));
+        currentBaseDate = monday;
+        renderCalendar();
+        if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
+        if (typeof renderDayView === 'function') renderDayView();
+    }
+
+    window.swipeWeek = function (dir) {
+        var tab = document.body.getAttribute('data-mobile-tab');
+        if (tab === 'day') shiftWeekInDay(dir);
+        else if (tab === 'schedule' || tab === 'people') changeWeek(dir);
+    };
+
+    function bindWeekSwipes() {
+        bindSwipe(document.getElementById('mainCalendarGridContainer'), window.swipeWeek);
+        bindSwipe(document.getElementById('dayViewContainer'), window.swipeWeek);
+        bindSwipe(document.getElementById('mainColumnSections'), window.swipeWeek);
+    }
 
     window.openDayMode = function(dateStr) {
         if (isMobile()) {
@@ -112,6 +171,8 @@
         updateNavActive(saved);
         document.body.setAttribute("data-mobile-tab", saved);
         if (saved === 'day' && typeof renderDayView === 'function') renderDayView();
+        if (saved === 'settings' && typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
+        bindWeekSwipes();
         if (typeof checkOnboarding === 'function') checkOnboarding();
     }
 

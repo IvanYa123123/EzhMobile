@@ -44,10 +44,28 @@ function openSettingsModal() {
     updateNotificationsHint();
     restoreSettingsSections();
 
+    if (typeof placeSettingsContent === 'function') {
+        if (window.innerWidth < 992 && typeof switchMobileTab === 'function') {
+            placeSettingsContent('settingsTabHost');
+            switchMobileTab('settings');
+            return;
+        }
+        placeSettingsContent('settingsModalHost');
+    }
+
     let modalEl = document.getElementById('settingsModal');
     let modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
     modal.show();
 }
+
+// Настройки — один и тот же DOM, который переезжает в модалку (десктоп)
+// или во вкладку «Настройки» (телефон). Так чекбоксы не дублируются.
+function placeSettingsContent(hostId) {
+    var content = document.getElementById('settingsContent');
+    var host = document.getElementById(hostId);
+    if (content && host) host.appendChild(content);
+}
+window.placeSettingsContent = placeSettingsContent;
 
 function loadSettingsSections() {
     try {
@@ -121,7 +139,7 @@ function saveSettingsFromUI() {
     localStorage.setItem('statusFormat', statusFormat);
 
     let p = document.getElementById('settingsStatusPrecision').value;
-    if (!['min', 'sec', 'cs'].includes(p)) p = 'min';
+    if (!['min', 'sec'].includes(p)) p = 'min';
     statusPrecision = p;
     localStorage.setItem('statusPrecision', statusPrecision);
 

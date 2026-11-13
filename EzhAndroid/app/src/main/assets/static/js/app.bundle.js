@@ -46,10 +46,9 @@ let showFriends  = localStorage.getItem('showFriends')  !== 'false';
 let showStatus = localStorage.getItem('showStatus') !== 'false';
 let statusFormat = localStorage.getItem('statusFormat') || 'interval';
 let statusPrecision = localStorage.getItem('statusPrecision') || 'min';
-if (!['min', 'sec', 'cs'].includes(statusPrecision)) statusPrecision = 'min';
+if (!['min', 'sec'].includes(statusPrecision)) statusPrecision = 'min';
 
 function getStatusTickMs() {
-    if (statusPrecision === 'cs')  return 100;
     if (statusPrecision === 'sec') return 1000;
     return 30000;
 }
@@ -1207,13 +1206,10 @@ function formatDurationMs(ms, precision = 'min') {
     let hours = Math.floor(ms / MS_HOUR);
     let mins  = Math.floor((ms % MS_HOUR) / MS_MIN);
     let secs  = Math.floor((ms % MS_MIN) / MS_SEC);
-    let cs    = Math.floor((ms % MS_SEC) / 10);
 
     if (ms < MS_MIN) {
         if (precision === 'min') return "меньше минуты";
-        if (precision === 'sec') return `${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`;
-        let csStr = String(cs).padStart(2, '0');
-        return `${secs}.${csStr} ${plural(secs, 'секунды', 'секунд', 'секунд')}`;
+        return `${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`;
     }
 
     let parts = [];
@@ -1225,15 +1221,8 @@ function formatDurationMs(ms, precision = 'min') {
         parts.push(`${mins} ${plural(mins, 'минуту', 'минуты', 'минут')}`);
     }
 
-    if (precision === 'sec' || precision === 'cs') {
-        if (precision === 'sec') {
-            if (secs > 0 || hours > 0 || mins > 0) {
-                parts.push(`${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`);
-            }
-        } else {
-            let csStr = String(cs).padStart(2, '0');
-            parts.push(`${secs}.${csStr} ${plural(secs, 'секунды', 'секунд', 'секунд')}`);
-        }
+    if (precision === 'sec' && (secs > 0 || hours > 0 || mins > 0)) {
+        parts.push(`${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`);
     }
 
     return parts.join(' ');
@@ -2454,107 +2443,8 @@ function renderSyncFreshness() {
 
 ;
 // --- navigation.js ---
-// Навигация по календарю: заметки, события, стрелки.
-
-function computeNextNoteDate(currentDateStr) {
-    let sorted = [...taskDatesSet].sort();
-    return sorted.find(d => d > currentDateStr) || null;
-}
-function computePrevNoteDate(currentDateStr) {
-    let sorted = [...taskDatesSet].sort().reverse();
-    return sorted.find(d => d < currentDateStr) || null;
-}
-
-function findNextEventDate(fromDateStr) {
-    let [y, m, d] = fromDateStr.split('-').map(Number);
-    let start = new Date(y, m - 1, d);
-    for (let i = 1; i <= 730; i++) {
-        let dt = new Date(start);
-        dt.setDate(dt.getDate() + i);
-        let dateStr = getLocalDateStr(dt);
-        if (getCustomItemsForDate(dateStr).some(x => x.is_event)) return dateStr;
-    }
-    return null;
-}
-function findPrevEventDate(fromDateStr) {
-    let [y, m, d] = fromDateStr.split('-').map(Number);
-    let start = new Date(y, m - 1, d);
-    for (let i = 1; i <= 730; i++) {
-        let dt = new Date(start);
-        dt.setDate(dt.getDate() - i);
-        let dateStr = getLocalDateStr(dt);
-        if (getCustomItemsForDate(dateStr).some(x => x.is_event)) return dateStr;
-    }
-    return null;
-}
-
-function navigateNote(fromDateStr, direction) {
-    let target = direction > 0
-        ? computeNextNoteDate(fromDateStr)
-        : computePrevNoteDate(fromDateStr);
-    if (target) jumpToDate(target);
-}
-
-function navigateEvent(fromDateStr, direction) {
-    let target = direction > 0
-        ? findNextEventDate(fromDateStr)
-        : findPrevEventDate(fromDateStr);
-    if (target) jumpToDate(target);
-}
-
-// ============================================================
-//  ОБЁРТКИ ДЛЯ ПАНЕЛИ ВКЛАДКИ «ДЕНЬ»
-// ------------------------------------------------------------
-//  Кнопки в index.html вызывают navigateNoteFromHere(dir) /
-//  navigateEventFromHere(dir) — раньше этих функций не было,
-//  и все 4 кнопки падали с ReferenceError.
-// ============================================================
-
-function navigateNoteFromHere(dir) {
-    if (!window.expandedDayDateStr) return;
-    navigateNote(window.expandedDayDateStr, dir);
-    if (typeof renderDayView === 'function') renderDayView();
-}
-
-function navigateEventFromHere(dir) {
-    if (!window.expandedDayDateStr) return;
-    navigateEvent(window.expandedDayDateStr, dir);
-    if (typeof renderDayView === 'function') renderDayView();
-}
-
-// ============================================================
-//  СТРЕЛКИ ← →
-// ------------------------------------------------------------
-//  • День развёрнут (fullscreen-day) → шаг на 1 день.
-//  • Иначе                          → шаг на неделю.
-// ============================================================
-
-function navigatePrev() {
-    if (expandedDayDateStr) _navigateDay(-1);
-    else                    changeWeek(-1);
-}
-function navigateNext() {
-    if (expandedDayDateStr) _navigateDay(1);
-    else                    changeWeek(1);
-}
-
-function _navigateDay(offset) {
-    window._calDir = offset > 0 ? 'right' : 'left';
-    let [y, m, d] = expandedDayDateStr.split('-').map(Number);
-    let target = new Date(y, m - 1, d);
-    target.setDate(target.getDate() + offset);
-    let targetStr = getLocalDateStr(target);
-
-    let dow = target.getDay();
-    if (dow === 0) dow = 7;
-    let monday = new Date(target);
-    monday.setDate(monday.getDate() - (dow - 1));
-
-    currentBaseDate = monday;
-    expandedDayDateStr = targetStr;
-    renderCalendar();
-    if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
-}
+// Навигация по календарю: поиск даты и переходы из мини-календаря.
+// Недели листаются свайпами (mobile.js), стрелки из вёрстки удалены.
 
 function jumpToDate(dateStr) {
     let [y, m, d] = dateStr.split('-').map(Number);
@@ -4423,10 +4313,28 @@ function openSettingsModal() {
     updateNotificationsHint();
     restoreSettingsSections();
 
+    if (typeof placeSettingsContent === 'function') {
+        if (window.innerWidth < 992 && typeof switchMobileTab === 'function') {
+            placeSettingsContent('settingsTabHost');
+            switchMobileTab('settings');
+            return;
+        }
+        placeSettingsContent('settingsModalHost');
+    }
+
     let modalEl = document.getElementById('settingsModal');
     let modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
     modal.show();
 }
+
+// Настройки — один и тот же DOM, который переезжает в модалку (десктоп)
+// или во вкладку «Настройки» (телефон). Так чекбоксы не дублируются.
+function placeSettingsContent(hostId) {
+    var content = document.getElementById('settingsContent');
+    var host = document.getElementById(hostId);
+    if (content && host) host.appendChild(content);
+}
+window.placeSettingsContent = placeSettingsContent;
 
 function loadSettingsSections() {
     try {
@@ -4500,7 +4408,7 @@ function saveSettingsFromUI() {
     localStorage.setItem('statusFormat', statusFormat);
 
     let p = document.getElementById('settingsStatusPrecision').value;
-    if (!['min', 'sec', 'cs'].includes(p)) p = 'min';
+    if (!['min', 'sec'].includes(p)) p = 'min';
     statusPrecision = p;
     localStorage.setItem('statusPrecision', statusPrecision);
 
@@ -6494,14 +6402,14 @@ async function manualRefresh() {
     }
 
     function switchTab(tab) {
-        if (tab !== "schedule" && tab !== "day" && tab !== "people" && tab !== "widgets") tab = "schedule";
+        if (tab !== "schedule" && tab !== "day" && tab !== "people" && tab !== "widgets" && tab !== "settings") tab = "schedule";
         document.body.setAttribute("data-mobile-tab", tab);
         try { localStorage.setItem(STORAGE_KEY, tab); } catch (e) {}
         updateNavActive(tab);
 
         // Уходя из «Дня», снимаем дневной режим: иначе стрелки
         // «Расписания» продолжают листать по одному дню.
-        if (tab !== 'day' && window.expandedDayDateStr) {
+        if (tab !== 'day' && tab !== 'settings' && window.expandedDayDateStr) {
             window.expandedDayDateStr = null;
             window._verticalDayOffset = 0;
             var fullCols = document.querySelectorAll('.day-col.fullscreen-day');
@@ -6509,6 +6417,10 @@ async function manualRefresh() {
             var calEl = document.getElementById('calendar');
             if (calEl) calEl.classList.remove('has-fullscreen');
             if (typeof renderCalendar === 'function' && document.getElementById('calendar')) renderCalendar();
+        }
+
+        if (tab === 'settings' && typeof placeSettingsContent === 'function') {
+            placeSettingsContent('settingsTabHost');
         }
 
         if (tab === 'day') {
@@ -6525,6 +6437,61 @@ async function manualRefresh() {
         if (isMobile()) window.scrollTo({ top: 0, behavior: "smooth" });
     }
     window.switchMobileTab = switchTab;
+
+    // ============================================================
+    //  СВАЙПЫ ← →
+    // ------------------------------------------------------------
+    //  «Расписание» и «Люди» — неделя назад/вперёд.
+    //  «День» — та же дата, но на 7 дней раньше/позже.
+    // ============================================================
+    var SWIPE_MIN = 60;
+
+    function bindSwipe(el, handler) {
+        if (!el) return;
+        var sx = 0, sy = 0, active = false;
+        el.addEventListener('touchstart', function (e) {
+            if (e.touches.length !== 1) { active = false; return; }
+            active = true; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+        }, { passive: true });
+        el.addEventListener('touchend', function (e) {
+            if (!active) return;
+            active = false;
+            var t = e.changedTouches && e.changedTouches[0];
+            if (!t) return;
+            var dx = t.clientX - sx, dy = t.clientY - sy;
+            if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+            handler(dx < 0 ? 1 : -1);
+        }, { passive: true });
+        el.addEventListener('touchcancel', function () { active = false; }, { passive: true });
+    }
+
+    function shiftWeekInDay(dir) {
+        if (!window.expandedDayDateStr) { changeWeek(dir); return; }
+        var parts = window.expandedDayDateStr.split('-').map(Number);
+        var target = new Date(parts[0], parts[1] - 1, parts[2]);
+        target.setDate(target.getDate() + dir * 7);
+        window._calDir = dir > 0 ? 'right' : 'left';
+        window.expandedDayDateStr = getLocalDateStr(target);
+        var dow = target.getDay() === 0 ? 7 : target.getDay();
+        var monday = new Date(target);
+        monday.setDate(monday.getDate() - (dow - 1));
+        currentBaseDate = monday;
+        renderCalendar();
+        if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
+        if (typeof renderDayView === 'function') renderDayView();
+    }
+
+    window.swipeWeek = function (dir) {
+        var tab = document.body.getAttribute('data-mobile-tab');
+        if (tab === 'day') shiftWeekInDay(dir);
+        else if (tab === 'schedule' || tab === 'people') changeWeek(dir);
+    };
+
+    function bindWeekSwipes() {
+        bindSwipe(document.getElementById('mainCalendarGridContainer'), window.swipeWeek);
+        bindSwipe(document.getElementById('dayViewContainer'), window.swipeWeek);
+        bindSwipe(document.getElementById('mainColumnSections'), window.swipeWeek);
+    }
 
     window.openDayMode = function(dateStr) {
         if (isMobile()) {
@@ -6592,6 +6559,8 @@ async function manualRefresh() {
         updateNavActive(saved);
         document.body.setAttribute("data-mobile-tab", saved);
         if (saved === 'day' && typeof renderDayView === 'function') renderDayView();
+        if (saved === 'settings' && typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
+        bindWeekSwipes();
         if (typeof checkOnboarding === 'function') checkOnboarding();
     }
 

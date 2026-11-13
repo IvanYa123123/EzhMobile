@@ -118,9 +118,7 @@
         <div class="col-xl-9 col-lg-8 mb-4 main-column mobile-tab-pane" data-tab="schedule">
             <div class="d-flex flex-column w-100">
                 <div class="calendar-nav-row" id="mainCalendarGridContainer">
-                    <div class="nav-side"><button class="nav-arrow" onclick="navigatePrev()">&#10094;</button></div>
-                    <div class="calendar-grid flex-grow-1" id="calendar"></div>
-                    <div class="nav-side"><button class="nav-arrow" onclick="navigateNext()">&#10095;</button></div>
+                    <div class="calendar-grid" id="calendar"></div>
                 </div>
 
                 <div id="mainColumnSections">
@@ -167,18 +165,15 @@
                 <button class="btn btn-outline-secondary btn-sm" onclick="navigateDay(1)">След. ›</button>
             </div>
 
-            <div class="day-nav-panel d-flex justify-content-center gap-2 mb-3" id="dayNavPanel">
-                <button type="button" class="btn btn-sm btn-outline-secondary day-nav-btn" style="min-width: 44px; min-height: 44px;" onclick="navigateNoteFromHere(-1)" title="Предыдущая заметка">📝‹</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary day-nav-btn" style="min-width: 44px; min-height: 44px;" onclick="navigateNoteFromHere(1)" title="Следующая заметка">📝›</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary day-nav-btn" style="min-width: 44px; min-height: 44px;" onclick="navigateEventFromHere(-1)" title="Предыдущее событие">🎯‹</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary day-nav-btn" style="min-width: 44px; min-height: 44px;" onclick="navigateEventFromHere(1)" title="Следующее событие">🎯›</button>
-            </div>
-
             <div id="dayViewContent" class="bg-white p-3 rounded shadow-sm border"></div>
         </div>
 
         <div class="col-12 mobile-tab-pane" data-tab="widgets" style="display: none;">
             <div id="rightWidgetsZone" class="d-flex flex-column gap-3"></div>
+        </div>
+
+        <div class="col-12 mobile-tab-pane" data-tab="settings" style="display: none;" id="settingsTabContainer">
+            <div class="bg-white rounded shadow-sm border p-3" id="settingsTabHost"></div>
         </div>
 
         <div class="col-xl-3 col-lg-4 sidebar-column d-none d-lg-block">
@@ -349,7 +344,7 @@
 </div>
 
 <div class="modal fade" id="addFriendModal" tabindex="-1">
-  <div class="modal-dialog"><div class="modal-content border-0 shadow">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow">
     <div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">Добавить друга</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">
       <div class="mb-3"><label class="form-label small">Имя (или ник)</label><input type="text" id="friendName" class="form-control form-control-sm"></div>
@@ -364,7 +359,7 @@
 </div>
 
 <div class="modal fade" id="addTeacherModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-scrollable"><div class="modal-content border-0 shadow">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content border-0 shadow">
     <div class="modal-header py-2 bg-light"><h6 class="modal-title fw-bold">🎓 Добавить преподавателя</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">
       <div class="mb-2"><input type="text" id="teacherAddInput" class="form-control form-control-sm" placeholder="ФИО..." autocomplete="off" oninput="onTeacherSearchInput(this.value)" onfocus="onTeacherSearchFocus()"></div>
@@ -375,7 +370,7 @@
 </div>
 
 <div class="modal fade" id="searchModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content border-0 shadow">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content border-0 shadow">
     <div class="modal-header py-2 bg-light">
       <div class="input-group input-group-sm flex-grow-1"><span class="input-group-text border-end-0">🔍</span><input type="text" id="searchInput" class="form-control border-start-0" placeholder="Поиск по заметкам и событиям..." autocomplete="off"></div>
       <button type="button" class="btn-close ms-2" data-bs-dismiss="modal"></button>
@@ -391,7 +386,8 @@
         <h5 class="modal-title fw-bold mb-0">⚙️ Настройки</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body p-0">
+      <div class="modal-body p-0" id="settingsModalHost">
+        <div id="settingsContent">
         <div class="settings-group pt-3">
           <div class="settings-group-title">📋 Отображение пар</div>
           <label class="settings-row" for="settingsToggleTeacher"><span class="settings-row-label">ФИО преподавателей</span><input class="form-check-input" type="checkbox" id="settingsToggleTeacher" onchange="saveSettingsFromUI()"></label>
@@ -448,7 +444,7 @@
             </select></div>
           <div class="settings-row-inline"><span class="settings-row-label">Точность</span>
             <select class="form-select form-select-sm" id="settingsStatusPrecision" onchange="saveSettingsFromUI()" style="max-width: 180px;">
-              <option value="min">до минуты</option><option value="sec">до секунды</option><option value="cs">до сотых</option>
+              <option value="min">до минуты</option><option value="sec">до секунды</option>
             </select></div>
         </div>
 
@@ -497,13 +493,14 @@
               <optgroup label="OLED"><option value="oled">🌑 OLED Deep</option><option value="oled-warm">🔥 OLED Warm</option></optgroup>
             </select></div>
         </div>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade" id="moodleModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
       <div class="modal-header py-2 bg-light">
         <h6 class="modal-title fw-bold">🌐 Еж Про: Moodle</h6>
@@ -542,7 +539,7 @@
 </div>
 
 <div class="modal fade" id="moodleSetupModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content border-0 shadow">
       <div class="modal-header py-2 bg-light">
         <h6 class="modal-title fw-bold">⚙️ Настройка семестров</h6>
@@ -601,7 +598,7 @@
 </div>
 
 <div class="modal fade" id="statsModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
       <div class="modal-header py-2 bg-light">
         <h6 class="modal-title fw-bold">📊 Остаток пар</h6>
@@ -613,7 +610,7 @@
 </div>
 
 <div class="modal fade" id="labsModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
       <div class="modal-header py-2 bg-light">
         <h6 class="modal-title fw-bold">🧪 Лабораторные</h6>
@@ -625,7 +622,7 @@
 </div>
 
 <div class="modal fade" id="labItemsModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
       <div class="modal-header py-2 bg-light">
         <h6 class="modal-title fw-bold" id="labItemsModalTitle">Лабораторные</h6>
@@ -637,7 +634,7 @@
 </div>
 
 <div class="modal fade" id="customScheduleModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-scrollable">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content border-0 shadow">
       <div class="modal-header py-2 bg-light">
         <h6 class="modal-title fw-bold" id="customScheduleModalTitle">Добавить в расписание</h6>
@@ -712,7 +709,7 @@
 </div>
 
 <div class="modal fade" id="subjectSettingsModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
       <div class="modal-header py-2 bg-light">
         <h6 class="modal-title fw-bold">⚙️ Настройки предмета</h6>
@@ -780,7 +777,7 @@
     <button type="button" class="mobile-nav-item" data-tab="day" onclick="switchMobileTab('day')"><span class="nav-icon">📄</span><span>День</span></button>
     <button type="button" class="mobile-nav-item" data-tab="people" onclick="switchMobileTab('people')"><span class="nav-icon">👥</span><span>Люди</span></button>
     <button type="button" class="mobile-nav-item" data-tab="widgets" onclick="switchMobileTab('widgets')"><span class="nav-icon">📊</span><span>Виджеты</span></button>
-    <button type="button" class="mobile-nav-item" onclick="openSettingsModal()"><span class="nav-icon">⚙️</span><span>Настройки</span></button>
+    <button type="button" class="mobile-nav-item" data-tab="settings" onclick="switchMobileTab('settings')"><span class="nav-icon">⚙️</span><span>Настройки</span></button>
 </nav>
 
 <script src="/static/vendor/bootstrap.bundle.min.js"></script>

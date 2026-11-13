@@ -45,6 +45,9 @@ android {
         targetSdk 34
         versionCode ezhVersionCode
         versionName ezhVersionName
+        // В APK попадают переводы только этих языков: библиотеки тянут
+        // десятки локалей в resources.arsc, хотя приложение русское.
+        resourceConfigurations += ['ru', 'en']
     }
 
     signingConfigs {

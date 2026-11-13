@@ -150,9 +150,11 @@ test('страница поднимается, настройки открыва
   w.eval("switchMobileTab('day')");
   w.eval("switchMobileTab('schedule')");
   const before = w.eval('currentBaseDate.getTime()');
-  w.eval('navigateNext()');
+  w.eval('changeWeek(1)');
   const after = w.eval('currentBaseDate.getTime()');
-  assert.equal(after - before, 7 * 24 * 60 * 60 * 1000, 'стрелка должна листать неделю');
+  assert.equal(after - before, 7 * 24 * 60 * 60 * 1000, 'неделя должна листаться на 7 дней');
+
+
 
   // Статус-строка показывается и во вкладке «День».
   w.eval('updateScheduleStatus()');
@@ -161,11 +163,110 @@ test('страница поднимается, настройки открыва
     'статус-строка должна быть и в «Дне»');
   assert.ok(statusDesktop.length > 0, 'статус-строка не пустая при наличии пар');
 
-  // Кнопка «Настройки» в нижней панели привязана к openSettingsModal().
-  assert.ok((navItems[4].getAttribute('onclick') || '').includes('openSettingsModal'),
-    'кнопка «Настройки» в нижней панели открывает настройки');
+  // Кнопка «Настройки» в нижней панели открывает отдельную вкладку.
+  assert.equal(navItems[4].getAttribute('data-tab'), 'settings',
+    'кнопка «Настройки» — вкладка, а не модалка');
+  assert.ok((navItems[4].getAttribute('onclick') || '').includes("switchMobileTab('settings')"),
+    'кнопка «Настройки» переключает вкладку');
+
+  // Стрелки календаря удалены: недели листаются свайпами.
+  assert.equal(w.document.querySelectorAll('.calendar-nav-row .nav-arrow').length, 0,
+    'стрелки листания недель убраны');
+  // 4 кнопки навигации по заметкам/событиям во вкладке «День» удалены.
+  assert.equal(w.document.getElementById('dayNavPanel'), null,
+    'лишние кнопки в «Дне» убраны');
+  // Точность статус-строки только «до минуты»/«до секунды».
+  assert.equal(w.document.querySelector('#settingsStatusPrecision option[value="cs"]'), null,
+    'точность «до сотых» убрана');
+  // Модалки открываются по центру, а не сверху.
+  for (const dialog of w.document.querySelectorAll('.modal-dialog')) {
+    assert.ok(dialog.classList.contains('modal-dialog-centered'),
+      `модалка должна быть по центру: ${dialog.parentElement && dialog.parentElement.id}`);
+  }
+  // Настройки — отдельная вкладка, контент переезжает в неё на телефоне.
+  assert.ok(w.document.getElementById('settingsTabContainer'), 'есть вкладка настроек');
+  assert.ok(w.document.getElementById('settingsTabHost'), 'есть контейнер настроек во вкладке');
 
   // Гасим фоновые запросы и таймеры приложения до закрытия окна.
+  w.__closed = true;
+  w.eval('for (let i = 1; i < 20000; i++) { clearTimeout(i); clearInterval(i); }');
+  await sleep(200);
+});
+
+test('телефон: настройки открываются вкладкой, свайпы листают недели', async (t) => {
+  const port = 5100;
+  const base = `http://127.0.0.1:${port}`;
+  const server = spawn(process.execPath, [path.join(HERE, 'stub-server.mjs')], {
+    env: { ...process.env, EZH_TEST_PORT: String(port) },
+    stdio: 'ignore',
+  });
+  t.after(() => server.kill());
+  await until(async () => {
+    try {
+      return (await fetch(`${base}/api/health`)).ok;
+    } catch (e) {
+      return false;
+    }
+  }, 'запуска сервера', 60000);
+
+  const errors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (e) => errors.push(String((e && e.message) || e)));
+  virtualConsole.on('error', (...args) => errors.push(args.map(String).join(' ')));
+
+  const dom = await JSDOM.fromURL(`${base}/`, {
+    runScripts: 'dangerously',
+    resources: 'usable',
+    pretendToBeVisual: true,
+    virtualConsole,
+    beforeParse(window) {
+      Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+      window.localStorage.setItem('savedGroup', GROUP);
+      window.localStorage.setItem('savedSubgroup', '0');
+      window.__closed = false;
+      window.fetch = (input, init = {}) => {
+        if (window.__closed) return new Promise(() => {});
+        const url = typeof input === 'string' && input.startsWith('/') ? base + input
+          : (input && input.url ? input.url : String(input));
+        const options = { ...init };
+        delete options.signal;
+        return fetch(url, options);
+      };
+    },
+  });
+  const w = dom.window;
+  t.after(() => w.close());
+
+  await until(() => w.document.querySelectorAll('#calendar .day-col').length === 7,
+    'рендера 7 дней');
+
+  // 1. Настройки открываются отдельной вкладкой, модалка не показывается.
+  w.eval('openSettingsModal()');
+  assert.equal(w.document.body.getAttribute('data-mobile-tab'), 'settings',
+    'настройки переключили вкладку');
+  const content = w.document.getElementById('settingsContent');
+  assert.equal(content.parentElement.id, 'settingsTabHost', 'контент переехал во вкладку');
+  assert.ok(!w.document.getElementById('settingsModal').classList.contains('show'),
+    'на телефоне модалка настроек не открывается');
+
+  // 2. Свайп в «Расписании» листает неделю.
+  w.eval("switchMobileTab('schedule')");
+  const before = w.eval('currentBaseDate.getTime()');
+  w.eval('window.swipeWeek(1)');
+  assert.equal(w.eval('currentBaseDate.getTime()') - before, 7 * 24 * 60 * 60 * 1000,
+    'свайп листает неделю в «Расписании»');
+
+  // 3. Свайп в «Дне» сохраняет дату и сдвигает её на неделю.
+  w.eval("switchMobileTab('day')");
+  const dayBefore = w.eval('window.expandedDayDateStr');
+  w.eval('window.swipeWeek(1)');
+  const dayAfter = w.eval('window.expandedDayDateStr');
+  const delta = (new Date(dayAfter) - new Date(dayBefore)) / (24 * 60 * 60 * 1000);
+  assert.equal(delta, 7, 'свайп в «Дне» сдвигает дату на неделю');
+
+  const refs = errors.filter((e) => e.includes('ReferenceError'));
+  assert.deepEqual(refs, [], `на странице были ReferenceError: ${refs.join('; ')}`);
+
   w.__closed = true;
   w.eval('for (let i = 1; i < 20000; i++) { clearTimeout(i); clearInterval(i); }');
   await sleep(200);

@@ -42,10 +42,9 @@ let showFriends  = localStorage.getItem('showFriends')  !== 'false';
 let showStatus = localStorage.getItem('showStatus') !== 'false';
 let statusFormat = localStorage.getItem('statusFormat') || 'interval';
 let statusPrecision = localStorage.getItem('statusPrecision') || 'min';
-if (!['min', 'sec', 'cs'].includes(statusPrecision)) statusPrecision = 'min';
+if (!['min', 'sec'].includes(statusPrecision)) statusPrecision = 'min';
 
 function getStatusTickMs() {
-    if (statusPrecision === 'cs')  return 100;
     if (statusPrecision === 'sec') return 1000;
     return 30000;
 }

@@ -182,13 +182,10 @@ function formatDurationMs(ms, precision = 'min') {
     let hours = Math.floor(ms / MS_HOUR);
     let mins  = Math.floor((ms % MS_HOUR) / MS_MIN);
     let secs  = Math.floor((ms % MS_MIN) / MS_SEC);
-    let cs    = Math.floor((ms % MS_SEC) / 10);
 
     if (ms < MS_MIN) {
         if (precision === 'min') return "меньше минуты";
-        if (precision === 'sec') return `${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`;
-        let csStr = String(cs).padStart(2, '0');
-        return `${secs}.${csStr} ${plural(secs, 'секунды', 'секунд', 'секунд')}`;
+        return `${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`;
     }
 
     let parts = [];
@@ -200,15 +197,8 @@ function formatDurationMs(ms, precision = 'min') {
         parts.push(`${mins} ${plural(mins, 'минуту', 'минуты', 'минут')}`);
     }
 
-    if (precision === 'sec' || precision === 'cs') {
-        if (precision === 'sec') {
-            if (secs > 0 || hours > 0 || mins > 0) {
-                parts.push(`${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`);
-            }
-        } else {
-            let csStr = String(cs).padStart(2, '0');
-            parts.push(`${secs}.${csStr} ${plural(secs, 'секунды', 'секунд', 'секунд')}`);
-        }
+    if (precision === 'sec' && (secs > 0 || hours > 0 || mins > 0)) {
+        parts.push(`${secs} ${plural(secs, 'секунду', 'секунды', 'секунд')}`);
     }
 
     return parts.join(' ');
