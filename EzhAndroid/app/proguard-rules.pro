@@ -1,6 +1,6 @@
 # R8/ProGuard-правила для «Ежедневника СевГУ».
 # minifyEnabled сейчас false, но файл нужен, чтобы включение
-# минификации не сломало мост JS↔Java и Chaquopy.
+# минификации не сломало мост JS↔Java.
 
 # --- WebView JavaScript bridge ---
 # Без этого R8 вырежет методы EzhBridge, помеченные @JavascriptInterface,
@@ -18,11 +18,3 @@
 # но фиксируем явно — они восстанавливают алярмы после ребута.
 -keep class com.ezh.diary.NotificationReceiver { *; }
 -keep class com.ezh.diary.BootReceiver { *; }
-
-# --- Chaquopy ---
--dontwarn com.chaquo.python.**
--keep class com.chaquo.python.** { *; }
--keep class com.chaquo.python.android.** { *; }
-
-# --- Python-модули вызываются рефлексией из Java (callAttr) ---
--keep class com.ezh.diary.EzhApplication { *; }

@@ -62,5 +62,5 @@ if (process.argv.includes('--check')) {
   console.log(`ok: ${MODULES.length} модулей, пакет собран`);
 } else {
   const size = build(jsDir);
-  console.log(`app.bundle.js: ${size} байт`);
+  console.log(`app.bundle.js: ${size} символов`);
 }
