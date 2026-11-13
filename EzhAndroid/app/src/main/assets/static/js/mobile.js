@@ -31,8 +31,9 @@
             if (typeof renderCalendar === 'function' && document.getElementById('calendar')) renderCalendar();
         }
 
-        if (tab === 'settings' && typeof placeSettingsContent === 'function') {
-            placeSettingsContent('settingsTabHost');
+        if (tab === 'settings') {
+            if (typeof fillSettingsForm === 'function') fillSettingsForm();
+            if (typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
         }
 
         if (tab === 'day') {
@@ -54,7 +55,7 @@
     //  СВАЙПЫ ← →
     // ------------------------------------------------------------
     //  «Расписание» и «Люди» — неделя назад/вперёд.
-    //  «День» — та же дата, но на 7 дней раньше/позже.
+    //  «День» — соседний день: свайп листает день за днём.
     // ============================================================
     var SWIPE_MIN = 60;
 
@@ -81,7 +82,7 @@
         if (!window.expandedDayDateStr) { changeWeek(dir); return; }
         var parts = window.expandedDayDateStr.split('-').map(Number);
         var target = new Date(parts[0], parts[1] - 1, parts[2]);
-        target.setDate(target.getDate() + dir * 7);
+        target.setDate(target.getDate() + dir);
         window._calDir = dir > 0 ? 'right' : 'left';
         window.expandedDayDateStr = getLocalDateStr(target);
         var dow = target.getDay() === 0 ? 7 : target.getDay();
@@ -171,7 +172,10 @@
         updateNavActive(saved);
         document.body.setAttribute("data-mobile-tab", saved);
         if (saved === 'day' && typeof renderDayView === 'function') renderDayView();
-        if (saved === 'settings' && typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
+        if (saved === 'settings') {
+            if (typeof fillSettingsForm === 'function') fillSettingsForm();
+            if (typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
+        }
         bindWeekSwipes();
         if (typeof checkOnboarding === 'function') checkOnboarding();
     }

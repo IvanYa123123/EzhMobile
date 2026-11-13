@@ -109,11 +109,18 @@ function goToToday() {
     let realTodayStr = getLocalDateStr(new Date());
     currentBaseDate = new Date();
     currentBaseDate.setDate(currentBaseDate.getDate() - (currentBaseDate.getDay() === 0 ? 6 : currentBaseDate.getDay() - 1));
-    // См. комментарий в jumpToWeek — не оставляем стрелки в дневном режиме.
-    expandedDayDateStr = null;
-    if (typeof _verticalDayOffset !== 'undefined') _verticalDayOffset = null;
+    var isDayTab = document.body.getAttribute('data-mobile-tab') === 'day';
+    if (isDayTab) {
+        // В «Дне» показываем сегодняшний день, а не только неделю.
+        window.expandedDayDateStr = realTodayStr;
+    } else {
+        // См. комментарий в jumpToWeek — не оставляем дневной режим.
+        expandedDayDateStr = null;
+        if (typeof _verticalDayOffset !== 'undefined') _verticalDayOffset = null;
+    }
     renderCalendar();
     if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
+    if (isDayTab && typeof renderDayView === 'function') renderDayView();
 }
 
 function changeWeek(offset) {

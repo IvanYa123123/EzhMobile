@@ -275,55 +275,54 @@ function renderFriendsCalendar(dir = null) {
                 }
             }
 
-            if (showFriends) {
-                html += `<div class="mt-2 border-top pt-2">`;
-                daySchedule.forEach(fItem => {
-                    const subjectKey = `${fItem.lesson} (${fItem.type_name})`;
-                    let displayLesson   = fItem.lesson;
-                    let lessonLink      = '';
-                    let displayTeacher  = fItem.teacher  || '';
-                    let displayLocation = fItem.location || '';
+            html += `<div class="mt-2 border-top pt-2">`;
+            daySchedule.forEach(fItem => {
+                const subjectKey = `${fItem.lesson} (${fItem.type_name})`;
+                let displayLesson   = fItem.lesson;
+                let lessonLink      = '';
+                let displayTeacher  = fItem.teacher  || '';
+                let displayLocation = fItem.location || '';
 
-                    if (cachedSubjectSettings && cachedSubjectSettings[subjectKey]) {
-                        const s = cachedSubjectSettings[subjectKey];
-                        if (s.custom_name) displayLesson   = s.custom_name;
-                        if (s.link)        lessonLink      = s.link;
-                        if (s.teacher)     displayTeacher  = s.teacher;
-                        if (s.location)    displayLocation = s.location;
-                    }
+                if (cachedSubjectSettings && cachedSubjectSettings[subjectKey]) {
+                    const s = cachedSubjectSettings[subjectKey];
+                    if (s.custom_name) displayLesson   = s.custom_name;
+                    if (s.link)        lessonLink      = s.link;
+                    if (s.teacher)     displayTeacher  = s.teacher;
+                    if (s.location)    displayLocation = s.location;
+                }
 
-                    let typeBadge = fItem.type_name
-                        ? `<span class="badge bg-secondary" style="font-size: 0.7em;">${escapeHtml(fItem.type_name)}</span>`
-                        : '';
+                let typeBadge = fItem.type_name
+                    ? `<span class="badge bg-secondary" style="font-size: 0.7em;">${escapeHtml(fItem.type_name)}</span>`
+                    : '';
 
-                    // safeHref возвращает уже экранированную строку
-                    // и отсекает не-http(s)/mailto. Раньше сюда попадал
-                    // сырой s.link → XSS через кавычку в href.
-                    const href = safeHref(lessonLink);
-                    let lessonHtml = href
-                        ? `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-decoration-none fw-bold" style="color: var(--accent);" title="${escapeHtml(fItem.lesson)}">${escapeHtml(displayLesson)}</a>`
-                        : `<span title="${escapeHtml(fItem.lesson)}">${escapeHtml(displayLesson)}</span>`;
+                // safeHref возвращает уже экранированную строку
+                // и отсекает не-http(s)/mailto. Раньше сюда попадал
+                // сырой s.link → XSS через кавычку в href.
+                const href = safeHref(lessonLink);
+                let lessonHtml = href
+                    ? `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-decoration-none fw-bold" style="color: var(--accent);" title="${escapeHtml(fItem.lesson)}">${escapeHtml(displayLesson)}</a>`
+                    : `<span title="${escapeHtml(fItem.lesson)}">${escapeHtml(displayLesson)}</span>`;
 
-                    let teacherHtml = (showTeacher && displayTeacher)
-                        ? `<div class="schedule-item-teacher">${escapeHtml(displayTeacher)}</div>` : '';
-                    let locationHtml = (showLocation && displayLocation)
-                        ? `<div class="schedule-item-location">${escapeHtml(displayLocation)}</div>` : '';
+                let teacherHtml = (showTeacher && displayTeacher)
+                    ? `<div class="schedule-item-teacher">${escapeHtml(displayTeacher)}</div>` : '';
+                let locationHtml = (showLocation && displayLocation)
+                    ? `<div class="schedule-item-location">${escapeHtml(displayLocation)}</div>` : '';
 
-                    html += `
-                        <div class="schedule-item shadow-sm" style="border-left: 3px solid var(--border-color);">
-                            <div class="schedule-item-top">
-                                <span class="schedule-item-time">
-                                    <strong class="text-primary">${fixTime(fItem.time_range)}</strong>
-                                </span>
-                            </div>
-                            ${typeBadge ? `<div class="schedule-item-badge">${typeBadge}</div>` : ''}
-                            <div class="schedule-item-title">${lessonHtml}</div>
-                            ${teacherHtml}
-                            ${locationHtml}
-                        </div>`;
-                });
-                html += `</div>`;
-            }
+                html += `
+                    <div class="schedule-item shadow-sm" style="border-left: 3px solid var(--border-color);">
+                        <div class="schedule-item-top">
+                            <span class="schedule-item-time">
+                                <strong class="text-primary">${fixTime(fItem.time_range)}</strong>
+                            </span>
+                        </div>
+                        ${typeBadge ? `<div class="schedule-item-badge">${typeBadge}</div>` : ''}
+                        <div class="schedule-item-title">${lessonHtml}</div>
+                        ${teacherHtml}
+                        ${locationHtml}
+                    </div>`;
+            });
+            html += `</div>`;
+
         } else {
             html += `<div class="text-muted text-center mt-2" style="font-size: 0.8em;">Выходной</div>`;
         }

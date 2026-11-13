@@ -41,7 +41,6 @@ let customScheduleItems = [];
 
 let showTeacher  = localStorage.getItem('showTeacher')  !== 'false';
 let showLocation = localStorage.getItem('showLocation') !== 'false';
-let showFriends  = localStorage.getItem('showFriends')  !== 'false';
 
 let showStatus = localStorage.getItem('showStatus') !== 'false';
 let statusFormat = localStorage.getItem('statusFormat') || 'interval';
@@ -1704,11 +1703,18 @@ function goToToday() {
     let realTodayStr = getLocalDateStr(new Date());
     currentBaseDate = new Date();
     currentBaseDate.setDate(currentBaseDate.getDate() - (currentBaseDate.getDay() === 0 ? 6 : currentBaseDate.getDay() - 1));
-    // См. комментарий в jumpToWeek — не оставляем стрелки в дневном режиме.
-    expandedDayDateStr = null;
-    if (typeof _verticalDayOffset !== 'undefined') _verticalDayOffset = null;
+    var isDayTab = document.body.getAttribute('data-mobile-tab') === 'day';
+    if (isDayTab) {
+        // В «Дне» показываем сегодняшний день, а не только неделю.
+        window.expandedDayDateStr = realTodayStr;
+    } else {
+        // См. комментарий в jumpToWeek — не оставляем дневной режим.
+        expandedDayDateStr = null;
+        if (typeof _verticalDayOffset !== 'undefined') _verticalDayOffset = null;
+    }
     renderCalendar();
     if (typeof refreshMiniCalendar === 'function') refreshMiniCalendar();
+    if (isDayTab && typeof renderDayView === 'function') renderDayView();
 }
 
 function changeWeek(offset) {
@@ -2239,12 +2245,12 @@ async function renderCalendar() {
                         <div class="schedule-summary shadow-sm" onclick="toggleSchedule('${dateStr}')">
                             <span>🕒 ${pairsCount} ${plural(pairsCount, 'пара', 'пары', 'пар')}</span>
                             ${eventsCount > 0 ? `<span class="ms-2 text-primary">🎯 ${eventsCount}</span>` : ''}
-                            <span id="arrow-${dateStr}" class="ms-2">▼</span>
+                            <span id="arrow-${dateStr}" class="ms-2">▲</span>
                         </div>
                         <div id="schedule-details-${dateStr}" class="expanded">
                             <div class="schedule-details-inner">${cardsHtml}</div>
                         </div>
-                    ` : `<div class="empty-state-inline">☕ Свободно</div>`}
+                    ` : `<div class="empty-state-inline">Свободный день</div>`}
                     <button type="button" class="btn btn-sm btn-outline-success w-100 mt-1" style="font-size: 11px;" onclick="event.stopPropagation(); openCustomScheduleModal('${dateStr}')">+ Событие</button>
                 </div>
 
@@ -3208,55 +3214,54 @@ function renderFriendsCalendar(dir = null) {
                 }
             }
 
-            if (showFriends) {
-                html += `<div class="mt-2 border-top pt-2">`;
-                daySchedule.forEach(fItem => {
-                    const subjectKey = `${fItem.lesson} (${fItem.type_name})`;
-                    let displayLesson   = fItem.lesson;
-                    let lessonLink      = '';
-                    let displayTeacher  = fItem.teacher  || '';
-                    let displayLocation = fItem.location || '';
+            html += `<div class="mt-2 border-top pt-2">`;
+            daySchedule.forEach(fItem => {
+                const subjectKey = `${fItem.lesson} (${fItem.type_name})`;
+                let displayLesson   = fItem.lesson;
+                let lessonLink      = '';
+                let displayTeacher  = fItem.teacher  || '';
+                let displayLocation = fItem.location || '';
 
-                    if (cachedSubjectSettings && cachedSubjectSettings[subjectKey]) {
-                        const s = cachedSubjectSettings[subjectKey];
-                        if (s.custom_name) displayLesson   = s.custom_name;
-                        if (s.link)        lessonLink      = s.link;
-                        if (s.teacher)     displayTeacher  = s.teacher;
-                        if (s.location)    displayLocation = s.location;
-                    }
+                if (cachedSubjectSettings && cachedSubjectSettings[subjectKey]) {
+                    const s = cachedSubjectSettings[subjectKey];
+                    if (s.custom_name) displayLesson   = s.custom_name;
+                    if (s.link)        lessonLink      = s.link;
+                    if (s.teacher)     displayTeacher  = s.teacher;
+                    if (s.location)    displayLocation = s.location;
+                }
 
-                    let typeBadge = fItem.type_name
-                        ? `<span class="badge bg-secondary" style="font-size: 0.7em;">${escapeHtml(fItem.type_name)}</span>`
-                        : '';
+                let typeBadge = fItem.type_name
+                    ? `<span class="badge bg-secondary" style="font-size: 0.7em;">${escapeHtml(fItem.type_name)}</span>`
+                    : '';
 
-                    // safeHref возвращает уже экранированную строку
-                    // и отсекает не-http(s)/mailto. Раньше сюда попадал
-                    // сырой s.link → XSS через кавычку в href.
-                    const href = safeHref(lessonLink);
-                    let lessonHtml = href
-                        ? `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-decoration-none fw-bold" style="color: var(--accent);" title="${escapeHtml(fItem.lesson)}">${escapeHtml(displayLesson)}</a>`
-                        : `<span title="${escapeHtml(fItem.lesson)}">${escapeHtml(displayLesson)}</span>`;
+                // safeHref возвращает уже экранированную строку
+                // и отсекает не-http(s)/mailto. Раньше сюда попадал
+                // сырой s.link → XSS через кавычку в href.
+                const href = safeHref(lessonLink);
+                let lessonHtml = href
+                    ? `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-decoration-none fw-bold" style="color: var(--accent);" title="${escapeHtml(fItem.lesson)}">${escapeHtml(displayLesson)}</a>`
+                    : `<span title="${escapeHtml(fItem.lesson)}">${escapeHtml(displayLesson)}</span>`;
 
-                    let teacherHtml = (showTeacher && displayTeacher)
-                        ? `<div class="schedule-item-teacher">${escapeHtml(displayTeacher)}</div>` : '';
-                    let locationHtml = (showLocation && displayLocation)
-                        ? `<div class="schedule-item-location">${escapeHtml(displayLocation)}</div>` : '';
+                let teacherHtml = (showTeacher && displayTeacher)
+                    ? `<div class="schedule-item-teacher">${escapeHtml(displayTeacher)}</div>` : '';
+                let locationHtml = (showLocation && displayLocation)
+                    ? `<div class="schedule-item-location">${escapeHtml(displayLocation)}</div>` : '';
 
-                    html += `
-                        <div class="schedule-item shadow-sm" style="border-left: 3px solid var(--border-color);">
-                            <div class="schedule-item-top">
-                                <span class="schedule-item-time">
-                                    <strong class="text-primary">${fixTime(fItem.time_range)}</strong>
-                                </span>
-                            </div>
-                            ${typeBadge ? `<div class="schedule-item-badge">${typeBadge}</div>` : ''}
-                            <div class="schedule-item-title">${lessonHtml}</div>
-                            ${teacherHtml}
-                            ${locationHtml}
-                        </div>`;
-                });
-                html += `</div>`;
-            }
+                html += `
+                    <div class="schedule-item shadow-sm" style="border-left: 3px solid var(--border-color);">
+                        <div class="schedule-item-top">
+                            <span class="schedule-item-time">
+                                <strong class="text-primary">${fixTime(fItem.time_range)}</strong>
+                            </span>
+                        </div>
+                        ${typeBadge ? `<div class="schedule-item-badge">${typeBadge}</div>` : ''}
+                        <div class="schedule-item-title">${lessonHtml}</div>
+                        ${teacherHtml}
+                        ${locationHtml}
+                    </div>`;
+            });
+            html += `</div>`;
+
         } else {
             html += `<div class="text-muted text-center mt-2" style="font-size: 0.8em;">Выходной</div>`;
         }
@@ -4287,10 +4292,9 @@ function initSettings() {
     if (typeof initWidgetDragAndDrop === 'function') initWidgetDragAndDrop();
 }
 
-function openSettingsModal() {
+function fillSettingsForm() {
     document.getElementById('settingsToggleTeacher').checked  = showTeacher;
     document.getElementById('settingsToggleLocation').checked = showLocation;
-    document.getElementById('settingsToggleFriends').checked  = showFriends;
     document.getElementById('settingsToggleStatus').checked   = showStatus;
 
     document.getElementById('settingsToggleWidgetMiniCal').checked   = showWidgetMiniCal;
@@ -4312,6 +4316,11 @@ function openSettingsModal() {
 
     updateNotificationsHint();
     restoreSettingsSections();
+}
+window.fillSettingsForm = fillSettingsForm;
+
+function openSettingsModal() {
+    fillSettingsForm();
 
     if (typeof placeSettingsContent === 'function') {
         if (window.innerWidth < 992 && typeof switchMobileTab === 'function') {
@@ -4375,12 +4384,10 @@ function restoreSettingsSections() {
 function saveSettingsFromUI() {
     showTeacher  = document.getElementById('settingsToggleTeacher').checked;
     showLocation = document.getElementById('settingsToggleLocation').checked;
-    showFriends  = document.getElementById('settingsToggleFriends').checked;
     showStatus   = document.getElementById('settingsToggleStatus').checked;
 
     localStorage.setItem('showTeacher',  showTeacher);
     localStorage.setItem('showLocation', showLocation);
-    localStorage.setItem('showFriends',  showFriends);
     localStorage.setItem('showStatus',   showStatus);
 
     showWidgetMiniCal        = document.getElementById('settingsToggleWidgetMiniCal').checked;
@@ -6419,8 +6426,9 @@ async function manualRefresh() {
             if (typeof renderCalendar === 'function' && document.getElementById('calendar')) renderCalendar();
         }
 
-        if (tab === 'settings' && typeof placeSettingsContent === 'function') {
-            placeSettingsContent('settingsTabHost');
+        if (tab === 'settings') {
+            if (typeof fillSettingsForm === 'function') fillSettingsForm();
+            if (typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
         }
 
         if (tab === 'day') {
@@ -6442,7 +6450,7 @@ async function manualRefresh() {
     //  СВАЙПЫ ← →
     // ------------------------------------------------------------
     //  «Расписание» и «Люди» — неделя назад/вперёд.
-    //  «День» — та же дата, но на 7 дней раньше/позже.
+    //  «День» — соседний день: свайп листает день за днём.
     // ============================================================
     var SWIPE_MIN = 60;
 
@@ -6469,7 +6477,7 @@ async function manualRefresh() {
         if (!window.expandedDayDateStr) { changeWeek(dir); return; }
         var parts = window.expandedDayDateStr.split('-').map(Number);
         var target = new Date(parts[0], parts[1] - 1, parts[2]);
-        target.setDate(target.getDate() + dir * 7);
+        target.setDate(target.getDate() + dir);
         window._calDir = dir > 0 ? 'right' : 'left';
         window.expandedDayDateStr = getLocalDateStr(target);
         var dow = target.getDay() === 0 ? 7 : target.getDay();
@@ -6559,7 +6567,10 @@ async function manualRefresh() {
         updateNavActive(saved);
         document.body.setAttribute("data-mobile-tab", saved);
         if (saved === 'day' && typeof renderDayView === 'function') renderDayView();
-        if (saved === 'settings' && typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
+        if (saved === 'settings') {
+            if (typeof fillSettingsForm === 'function') fillSettingsForm();
+            if (typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
+        }
         bindWeekSwipes();
         if (typeof checkOnboarding === 'function') checkOnboarding();
     }
@@ -7867,7 +7878,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 function updateDisplayPrefs() {
     showTeacher  = localStorage.getItem('showTeacher')  !== 'false';
     showLocation = localStorage.getItem('showLocation') !== 'false';
-    showFriends  = localStorage.getItem('showFriends')  !== 'false';
     renderCalendar();
 }
 

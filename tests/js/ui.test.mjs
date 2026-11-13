@@ -164,10 +164,9 @@ test('страница поднимается, настройки открыва
   assert.ok(statusDesktop.length > 0, 'статус-строка не пустая при наличии пар');
 
   // Кнопка «Настройки» в нижней панели открывает отдельную вкладку.
-  assert.equal(navItems[4].getAttribute('data-tab'), 'settings',
-    'кнопка «Настройки» — вкладка, а не модалка');
-  assert.ok((navItems[4].getAttribute('onclick') || '').includes("switchMobileTab('settings')"),
-    'кнопка «Настройки» переключает вкладку');
+  assert.ok((navItems[4].getAttribute('onclick') || '').includes('openSettingsModal'),
+    'кнопка «Настройки» открывает вкладку настроек');
+  assert.equal(navItems.length, 5, 'в нижней панели пять вкладок');
 
   // Стрелки календаря удалены: недели листаются свайпами.
   assert.equal(w.document.querySelectorAll('.calendar-nav-row .nav-arrow').length, 0,
@@ -186,6 +185,20 @@ test('страница поднимается, настройки открыва
   // Настройки — отдельная вкладка, контент переезжает в неё на телефоне.
   assert.ok(w.document.getElementById('settingsTabContainer'), 'есть вкладка настроек');
   assert.ok(w.document.getElementById('settingsTabHost'), 'есть контейнер настроек во вкладке');
+
+  // Раскрытый список пар показывает стрелку вверх, пустой день — «Свободный день».
+  for (const arrow of w.document.querySelectorAll('#calendar span[id^="arrow-"]')) {
+    assert.equal(arrow.textContent, '▲', 'раскрытый день: стрелка вверх');
+  }
+  assert.ok(!w.document.getElementById('calendar').innerHTML.includes('☕ Свободно'),
+    'без эмодзи и слова «Свободно»');
+
+  // «К текущему дню» работает и во вкладке «День».
+  w.eval("switchMobileTab('day')");
+  w.eval("window.expandedDayDateStr = '2026-01-01'");
+  w.eval('goToToday()');
+  assert.equal(w.eval('window.expandedDayDateStr'), w.eval('getLocalDateStr(new Date())'),
+    'кнопка «сегодня» возвращает текущий день и в «Дне»');
 
   // Гасим фоновые запросы и таймеры приложения до закрытия окна.
   w.__closed = true;
@@ -242,6 +255,17 @@ test('телефон: настройки открываются вкладкой
 
   // 1. Настройки открываются отдельной вкладкой, модалка не показывается.
   w.eval('openSettingsModal()');
+  // Форма заполнена текущими значениями: иначе любое изменение сохранит
+  // выключенные чекбоксы и светлую тему (старый баг).
+  assert.equal(w.document.getElementById('settingsToggleTeacher').checked, true,
+    'в настройках показано актуальное значение «преподаватель»');
+  assert.equal(w.document.getElementById('settingsTheme').value, 'light',
+    'в настройках показана текущая тема');
+  const teacherCb = w.document.getElementById('settingsToggleTeacher');
+  teacherCb.checked = false;
+  teacherCb.dispatchEvent(new w.Event('change', { bubbles: true }));
+  assert.equal(w.localStorage.getItem('showTeacher'), 'false', 'изменение настройки сохраняется');
+  assert.equal(w.localStorage.getItem('theme'), 'light', 'чужая настройка (тема) не сбрасывается');
   assert.equal(w.document.body.getAttribute('data-mobile-tab'), 'settings',
     'настройки переключили вкладку');
   const content = w.document.getElementById('settingsContent');
@@ -256,13 +280,13 @@ test('телефон: настройки открываются вкладкой
   assert.equal(w.eval('currentBaseDate.getTime()') - before, 7 * 24 * 60 * 60 * 1000,
     'свайп листает неделю в «Расписании»');
 
-  // 3. Свайп в «Дне» сохраняет дату и сдвигает её на неделю.
+  // 3. Свайп в «Дне» листает соседний день (а не неделю).
   w.eval("switchMobileTab('day')");
   const dayBefore = w.eval('window.expandedDayDateStr');
   w.eval('window.swipeWeek(1)');
   const dayAfter = w.eval('window.expandedDayDateStr');
   const delta = (new Date(dayAfter) - new Date(dayBefore)) / (24 * 60 * 60 * 1000);
-  assert.equal(delta, 7, 'свайп в «Дне» сдвигает дату на неделю');
+  assert.equal(delta, 1, 'свайп в «Дне» сдвигает дату на один день');
 
   const refs = errors.filter((e) => e.includes('ReferenceError'));
   assert.deepEqual(refs, [], `на странице были ReferenceError: ${refs.join('; ')}`);

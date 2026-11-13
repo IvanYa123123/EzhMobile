@@ -392,7 +392,6 @@
           <div class="settings-group-title">📋 Отображение пар</div>
           <label class="settings-row" for="settingsToggleTeacher"><span class="settings-row-label">ФИО преподавателей</span><input class="form-check-input" type="checkbox" id="settingsToggleTeacher" onchange="saveSettingsFromUI()"></label>
           <label class="settings-row" for="settingsToggleLocation"><span class="settings-row-label">Номера аудиторий</span><input class="form-check-input" type="checkbox" id="settingsToggleLocation" onchange="saveSettingsFromUI()"></label>
-          <label class="settings-row" for="settingsToggleFriends"><span class="settings-row-label">Подробные пары друзей</span><input class="form-check-input" type="checkbox" id="settingsToggleFriends" onchange="saveSettingsFromUI()"></label>
         </div>
 
         <div class="settings-group">
@@ -777,7 +776,7 @@
     <button type="button" class="mobile-nav-item" data-tab="day" onclick="switchMobileTab('day')"><span class="nav-icon">📄</span><span>День</span></button>
     <button type="button" class="mobile-nav-item" data-tab="people" onclick="switchMobileTab('people')"><span class="nav-icon">👥</span><span>Люди</span></button>
     <button type="button" class="mobile-nav-item" data-tab="widgets" onclick="switchMobileTab('widgets')"><span class="nav-icon">📊</span><span>Виджеты</span></button>
-    <button type="button" class="mobile-nav-item" data-tab="settings" onclick="switchMobileTab('settings')"><span class="nav-icon">⚙️</span><span>Настройки</span></button>
+    <button type="button" class="mobile-nav-item" onclick="openSettingsModal()"><span class="nav-icon">⚙️</span><span>Настройки</span></button>
 </nav>
 
 <script src="/static/vendor/bootstrap.bundle.min.js"></script>

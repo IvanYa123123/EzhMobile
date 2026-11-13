@@ -18,10 +18,9 @@ function initSettings() {
     if (typeof initWidgetDragAndDrop === 'function') initWidgetDragAndDrop();
 }
 
-function openSettingsModal() {
+function fillSettingsForm() {
     document.getElementById('settingsToggleTeacher').checked  = showTeacher;
     document.getElementById('settingsToggleLocation').checked = showLocation;
-    document.getElementById('settingsToggleFriends').checked  = showFriends;
     document.getElementById('settingsToggleStatus').checked   = showStatus;
 
     document.getElementById('settingsToggleWidgetMiniCal').checked   = showWidgetMiniCal;
@@ -43,6 +42,11 @@ function openSettingsModal() {
 
     updateNotificationsHint();
     restoreSettingsSections();
+}
+window.fillSettingsForm = fillSettingsForm;
+
+function openSettingsModal() {
+    fillSettingsForm();
 
     if (typeof placeSettingsContent === 'function') {
         if (window.innerWidth < 992 && typeof switchMobileTab === 'function') {
@@ -106,12 +110,10 @@ function restoreSettingsSections() {
 function saveSettingsFromUI() {
     showTeacher  = document.getElementById('settingsToggleTeacher').checked;
     showLocation = document.getElementById('settingsToggleLocation').checked;
-    showFriends  = document.getElementById('settingsToggleFriends').checked;
     showStatus   = document.getElementById('settingsToggleStatus').checked;
 
     localStorage.setItem('showTeacher',  showTeacher);
     localStorage.setItem('showLocation', showLocation);
-    localStorage.setItem('showFriends',  showFriends);
     localStorage.setItem('showStatus',   showStatus);
 
     showWidgetMiniCal        = document.getElementById('settingsToggleWidgetMiniCal').checked;

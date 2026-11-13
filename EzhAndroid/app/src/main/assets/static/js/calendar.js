@@ -112,12 +112,12 @@ async function renderCalendar() {
                         <div class="schedule-summary shadow-sm" onclick="toggleSchedule('${dateStr}')">
                             <span>🕒 ${pairsCount} ${plural(pairsCount, 'пара', 'пары', 'пар')}</span>
                             ${eventsCount > 0 ? `<span class="ms-2 text-primary">🎯 ${eventsCount}</span>` : ''}
-                            <span id="arrow-${dateStr}" class="ms-2">▼</span>
+                            <span id="arrow-${dateStr}" class="ms-2">▲</span>
                         </div>
                         <div id="schedule-details-${dateStr}" class="expanded">
                             <div class="schedule-details-inner">${cardsHtml}</div>
                         </div>
-                    ` : `<div class="empty-state-inline">☕ Свободно</div>`}
+                    ` : `<div class="empty-state-inline">Свободный день</div>`}
                     <button type="button" class="btn btn-sm btn-outline-success w-100 mt-1" style="font-size: 11px;" onclick="event.stopPropagation(); openCustomScheduleModal('${dateStr}')">+ Событие</button>
                 </div>
 

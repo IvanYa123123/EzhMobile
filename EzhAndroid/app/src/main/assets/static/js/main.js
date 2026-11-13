@@ -66,7 +66,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 function updateDisplayPrefs() {
     showTeacher  = localStorage.getItem('showTeacher')  !== 'false';
     showLocation = localStorage.getItem('showLocation') !== 'false';
-    showFriends  = localStorage.getItem('showFriends')  !== 'false';
     renderCalendar();
 }
 
