@@ -18,6 +18,9 @@
        Недели листаются свайпами, поэтому боковые стрелки не нужны. */
     .calendar-nav-row { width: 100%; margin-bottom: 8px; }
     .calendar-grid { display: grid !important; grid-template-columns: 1fr !important; gap: 8px !important; width: 100% !important; padding: 0 !important; }
+    /* Стиль «две колонки» из настроек: как было до переделки, но без стрелок. */
+    body[data-schedule-cols="2"] #calendar { grid-template-columns: repeat(2, 1fr) !important; }
+    body[data-schedule-cols="2"] #calendar .day-col:nth-child(7) { grid-column: span 2; }
 
     .day-col { min-height: auto !important; padding: 10px !important; border-radius: 12px; background: var(--bg-surface) !important; box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important; border: 1px solid var(--border-color) !important; display: flex; flex-direction: column; cursor: pointer; }
     .day-header { font-size: 12px !important; text-transform: uppercase; color: var(--text-muted) !important; text-align: left !important; padding: 0 0 6px 0 !important; border-bottom: 1px solid var(--border-soft) !important; margin-bottom: 8px !important; }
@@ -27,6 +30,9 @@
     .task-card { font-size: 12px; padding: 8px; border-radius: 8px; margin-bottom: 6px; background: var(--bg-surface-alt); }
     
     /* Вкладка "День" */
+    /* Статус-строка вплотную к шапке: убираем отступ контейнера и margin статуса. */
+    body[data-mobile-tab="day"] .container-fluid { padding-top: 0 !important; }
+    #dayScheduleStatus { margin-top: 0 !important; }
     #dayViewContent { padding-bottom: 20px; }
     #dayViewContent .schedule-item { border-radius: 10px; }
     #dayViewContent .schedule-item-title { font-size: 15px; }

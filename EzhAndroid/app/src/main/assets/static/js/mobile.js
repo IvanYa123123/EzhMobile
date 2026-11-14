@@ -169,14 +169,10 @@
         if (!isMobile()) return;
         var saved = "schedule";
         try { saved = localStorage.getItem(STORAGE_KEY) || "schedule"; } catch (e) {}
-        updateNavActive(saved);
-        document.body.setAttribute("data-mobile-tab", saved);
-        if (saved === 'day' && typeof renderDayView === 'function') renderDayView();
-        if (saved === 'settings') {
-            if (typeof fillSettingsForm === 'function') fillSettingsForm();
-            if (typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
-        }
         bindWeekSwipes();
+        // switchTab сам готовит вкладку: в «Дне» выставляет дату и рисует её,
+        // в «Настройках» заполняет форму. Иначе после перезапуска «День» пустой.
+        switchTab(saved);
         if (typeof checkOnboarding === 'function') checkOnboarding();
     }
 

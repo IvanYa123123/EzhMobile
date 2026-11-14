@@ -41,6 +41,7 @@ let customScheduleItems = [];
 
 let showTeacher  = localStorage.getItem('showTeacher')  !== 'false';
 let showLocation = localStorage.getItem('showLocation') !== 'false';
+let scheduleTwoColumns = localStorage.getItem('scheduleTwoColumns') === 'true';
 
 let showStatus = localStorage.getItem('showStatus') !== 'false';
 let statusFormat = localStorage.getItem('statusFormat') || 'interval';
@@ -2240,7 +2241,7 @@ async function renderCalendar() {
             <div class="day-col ${isTodayClass}" id="day-col-${dateStr}">
                 <div class="day-header"><span class="day-nav-center">${displayDate}</span></div>
 
-                <div class="day-schedule-wrap mb-2">
+                <div class="day-schedule-wrap">
                     ${(pairsCount + eventsCount) > 0 ? `
                         <div class="schedule-summary shadow-sm" onclick="toggleSchedule('${dateStr}')">
                             <span>🕒 ${pairsCount} ${plural(pairsCount, 'пара', 'пары', 'пар')}</span>
@@ -2254,7 +2255,7 @@ async function renderCalendar() {
                     <button type="button" class="btn btn-sm btn-outline-success w-100 mt-1" style="font-size: 11px;" onclick="event.stopPropagation(); openCustomScheduleModal('${dateStr}')">+ Событие</button>
                 </div>
 
-                <div class="day-tasks-wrap mt-2">
+                <div class="day-tasks-wrap mt-1">
                     <div id="tasks-${dateStr}" class="mb-1"></div>
                     <div id="expand-btn-wrap-${dateStr}" style="display:none; text-align:center; margin-top:4px;">
                         <button type="button" class="day-expand-btn" onclick="event.stopPropagation(); toggleExpandDay('${dateStr}')">
@@ -2342,8 +2343,8 @@ async function renderDayView() {
                         </div>
                     </div>
                     <div class="fw-bold mb-1" style="font-size: 1.1rem;">${escapeHtml(item.lesson)}</div>
-                    ${item.teacher ? `<div class="text-muted small">👤 ${escapeHtml(item.teacher)}</div>` : ''}
-                    ${item.location ? `<div class="text-muted small">🚪 ${escapeHtml(item.location)}</div>` : ''}
+                    ${item.teacher ? `<div class="text-muted small">${escapeHtml(item.teacher)}</div>` : ''}
+                    ${item.location ? `<div class="text-muted small">${escapeHtml(item.location)}</div>` : ''}
                 </div>`;
         });
     }
@@ -4286,6 +4287,7 @@ function initSettings() {
     }
 
     applyTheme();
+    applyScheduleColumns();
     applyWidgetVisibility();
     if (typeof applyFriendsTeachersVisibility === 'function') applyFriendsTeachersVisibility();
     if (typeof initNotesWidget === 'function') initNotesWidget();
@@ -4295,6 +4297,7 @@ function initSettings() {
 function fillSettingsForm() {
     document.getElementById('settingsToggleTeacher').checked  = showTeacher;
     document.getElementById('settingsToggleLocation').checked = showLocation;
+    document.getElementById('settingsToggleTwoCols').checked = scheduleTwoColumns;
     document.getElementById('settingsToggleStatus').checked   = showStatus;
 
     document.getElementById('settingsToggleWidgetMiniCal').checked   = showWidgetMiniCal;
@@ -4318,6 +4321,11 @@ function fillSettingsForm() {
     restoreSettingsSections();
 }
 window.fillSettingsForm = fillSettingsForm;
+
+function applyScheduleColumns() {
+    document.body.setAttribute('data-schedule-cols', scheduleTwoColumns ? '2' : '1');
+}
+window.applyScheduleColumns = applyScheduleColumns;
 
 function openSettingsModal() {
     fillSettingsForm();
@@ -4388,6 +4396,9 @@ function saveSettingsFromUI() {
 
     localStorage.setItem('showTeacher',  showTeacher);
     localStorage.setItem('showLocation', showLocation);
+    scheduleTwoColumns = document.getElementById('settingsToggleTwoCols').checked;
+    localStorage.setItem('scheduleTwoColumns', scheduleTwoColumns ? 'true' : 'false');
+    applyScheduleColumns();
     localStorage.setItem('showStatus',   showStatus);
 
     showWidgetMiniCal        = document.getElementById('settingsToggleWidgetMiniCal').checked;
@@ -6564,14 +6575,10 @@ async function manualRefresh() {
         if (!isMobile()) return;
         var saved = "schedule";
         try { saved = localStorage.getItem(STORAGE_KEY) || "schedule"; } catch (e) {}
-        updateNavActive(saved);
-        document.body.setAttribute("data-mobile-tab", saved);
-        if (saved === 'day' && typeof renderDayView === 'function') renderDayView();
-        if (saved === 'settings') {
-            if (typeof fillSettingsForm === 'function') fillSettingsForm();
-            if (typeof placeSettingsContent === 'function') placeSettingsContent('settingsTabHost');
-        }
         bindWeekSwipes();
+        // switchTab сам готовит вкладку: в «Дне» выставляет дату и рисует её,
+        // в «Настройках» заполняет форму. Иначе после перезапуска «День» пустой.
+        switchTab(saved);
         if (typeof checkOnboarding === 'function') checkOnboarding();
     }
 

@@ -268,6 +268,19 @@ test('телефон: настройки открываются вкладкой
   assert.equal(w.localStorage.getItem('theme'), 'light', 'чужая настройка (тема) не сбрасывается');
   assert.equal(w.document.body.getAttribute('data-mobile-tab'), 'settings',
     'настройки переключили вкладку');
+
+  // Стиль расписания: по умолчанию одна колонка, переключатель включает две.
+  assert.equal(w.document.getElementById('settingsToggleTwoCols').checked, false,
+    'по умолчанию одна колонка');
+  assert.equal(w.document.body.getAttribute('data-schedule-cols'), '1',
+    'рамка колонок по умолчанию — одна');
+  const colsCb = w.document.getElementById('settingsToggleTwoCols');
+  colsCb.checked = true;
+  colsCb.dispatchEvent(new w.Event('change', { bubbles: true }));
+  assert.equal(w.document.body.getAttribute('data-schedule-cols'), '2',
+    'переключатель включает две колонки');
+  assert.equal(w.localStorage.getItem('scheduleTwoColumns'), 'true',
+    'выбор стиля сохраняется');
   const content = w.document.getElementById('settingsContent');
   assert.equal(content.parentElement.id, 'settingsTabHost', 'контент переехал во вкладку');
   assert.ok(!w.document.getElementById('settingsModal').classList.contains('show'),
@@ -287,6 +300,58 @@ test('телефон: настройки открываются вкладкой
   const dayAfter = w.eval('window.expandedDayDateStr');
   const delta = (new Date(dayAfter) - new Date(dayBefore)) / (24 * 60 * 60 * 1000);
   assert.equal(delta, 1, 'свайп в «Дне» сдвигает дату на один день');
+
+  const refs = errors.filter((e) => e.includes('ReferenceError'));
+  assert.deepEqual(refs, [], `на странице были ReferenceError: ${refs.join('; ')}`);
+
+  w.__closed = true;
+  w.eval('for (let i = 1; i < 20000; i++) { clearTimeout(i); clearInterval(i); }');
+  await sleep(200);
+});
+
+test('последняя вкладка «День» после перезапуска отрисовывается, а не пустая', async (t) => {
+  const server = await startServer();
+  t.after(() => server.kill());
+
+  const base = BASE;
+  const errors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (e) => errors.push(String((e && e.message) || e)));
+  virtualConsole.on('error', (...args) => errors.push(args.map(String).join(' ')));
+
+  const dom = await JSDOM.fromURL(`${base}/`, {
+    runScripts: 'dangerously',
+    resources: 'usable',
+    pretendToBeVisual: true,
+    virtualConsole,
+    beforeParse(window) {
+      Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+      window.localStorage.setItem('savedGroup', GROUP);
+      window.localStorage.setItem('savedSubgroup', '0');
+      // Как после прошлой сессии: приложение закрыли на вкладке «День».
+      window.localStorage.setItem('ezhMobileTab', 'day');
+      window.__closed = false;
+      window.fetch = (input, init = {}) => {
+        if (window.__closed) return new Promise(() => {});
+        const url = typeof input === 'string' && input.startsWith('/') ? base + input
+          : (input && input.url ? input.url : String(input));
+        const options = { ...init };
+        delete options.signal;
+        return fetch(url, options);
+      };
+    },
+  });
+  const w = dom.window;
+  t.after(() => w.close());
+
+  await until(() => w.document.body.getAttribute('data-mobile-tab') === 'day',
+    'восстановления вкладки «День» после перезапуска');
+
+  await until(() => w.eval('window.expandedDayDateStr')
+    && w.document.getElementById('dayViewContent').innerHTML.trim().length > 0,
+    'отрисовки «Дня» после перезапуска');
+  assert.notEqual(w.document.getElementById('dayViewTitle').textContent, 'Дата',
+    'день отрисован, а не пустой');
 
   const refs = errors.filter((e) => e.includes('ReferenceError'));
   assert.deepEqual(refs, [], `на странице были ReferenceError: ${refs.join('; ')}`);

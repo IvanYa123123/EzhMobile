@@ -12,6 +12,7 @@ function initSettings() {
     }
 
     applyTheme();
+    applyScheduleColumns();
     applyWidgetVisibility();
     if (typeof applyFriendsTeachersVisibility === 'function') applyFriendsTeachersVisibility();
     if (typeof initNotesWidget === 'function') initNotesWidget();
@@ -21,6 +22,7 @@ function initSettings() {
 function fillSettingsForm() {
     document.getElementById('settingsToggleTeacher').checked  = showTeacher;
     document.getElementById('settingsToggleLocation').checked = showLocation;
+    document.getElementById('settingsToggleTwoCols').checked = scheduleTwoColumns;
     document.getElementById('settingsToggleStatus').checked   = showStatus;
 
     document.getElementById('settingsToggleWidgetMiniCal').checked   = showWidgetMiniCal;
@@ -44,6 +46,11 @@ function fillSettingsForm() {
     restoreSettingsSections();
 }
 window.fillSettingsForm = fillSettingsForm;
+
+function applyScheduleColumns() {
+    document.body.setAttribute('data-schedule-cols', scheduleTwoColumns ? '2' : '1');
+}
+window.applyScheduleColumns = applyScheduleColumns;
 
 function openSettingsModal() {
     fillSettingsForm();
@@ -114,6 +121,9 @@ function saveSettingsFromUI() {
 
     localStorage.setItem('showTeacher',  showTeacher);
     localStorage.setItem('showLocation', showLocation);
+    scheduleTwoColumns = document.getElementById('settingsToggleTwoCols').checked;
+    localStorage.setItem('scheduleTwoColumns', scheduleTwoColumns ? 'true' : 'false');
+    applyScheduleColumns();
     localStorage.setItem('showStatus',   showStatus);
 
     showWidgetMiniCal        = document.getElementById('settingsToggleWidgetMiniCal').checked;
