@@ -40,19 +40,6 @@ public class EzhBridge {
     }
 
     @JavascriptInterface
-    public String getPlatformInfo() {
-        JSONObject o = new JSONObject();
-        try {
-            o.put("platform", "android");
-            o.put("sdk", Build.VERSION.SDK_INT);
-            o.put("model", Build.MODEL);
-            o.put("manufacturer", Build.MANUFACTURER);
-            o.put("version", Build.VERSION.RELEASE);
-        } catch (Exception ignored) {}
-        return o.toString();
-    }
-
-    @JavascriptInterface
     public boolean hasNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33) {
             return ctx.checkSelfPermission("android.permission.POST_NOTIFICATIONS")
@@ -158,37 +145,13 @@ public class EzhBridge {
     }
 
     @JavascriptInterface
-    public void cancelNotification(String id) {
-        if (id == null) return;
-        try {
-            AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
-            if (am == null) return;
-            Intent intent = new Intent(ctx, NotificationReceiver.class);
-            intent.setAction("com.ezh.diary.NOTIFY_" + id);
-            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-            if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
-            PendingIntent pi = PendingIntent.getBroadcast(ctx, id.hashCode(), intent, flags);
-            am.cancel(pi);
-
-            Set<String> ids = new HashSet<>(loadIds());
-            ids.remove(id);
-            saveIds(ids);
-
-            ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-               .edit()
-               .remove(KEY_SPEC_PREFIX + id)
-               .apply();
-        } catch (Exception ignored) {}
-    }
-
-    @JavascriptInterface
     public void cancelAllNotifications() {
         try {
             AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
             Set<String> ids = new HashSet<>(loadIds());
 
             // Отменяем алярмы в цикле, но SharedPreferences пишем ОДИН раз
-            // в конце. Раньше каждый cancelNotification() делал
+            // в конце. Раньше отмена каждого будильника делала
             // loadIds()+saveIds() — при ~180 будильниках это 180 чтений
             // и 180 записей подряд, заметный лаг на слабых устройствах.
             if (am != null) {

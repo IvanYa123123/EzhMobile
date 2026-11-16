@@ -6,7 +6,6 @@ import com.ezh.diary.core.moodle.MoodleHttp
 import com.ezh.diary.core.moodle.MoodleService
 import com.ezh.diary.core.planner.PlannerResult
 import com.ezh.diary.core.planner.SemesterPlanner
-import com.ezh.diary.core.planner.GroupsApi
 import com.ezh.diary.core.storage.Bundles
 import com.ezh.diary.core.storage.DataFiles
 import com.ezh.diary.core.teacher.TeacherService
@@ -104,7 +103,6 @@ fun newDeps(
     version: String = "0.8",
     assets: StaticAssets? = null,
     bundles: Bundles = Bundles.Empty,
-    groupsApi: GroupsApi? = null,
     clock: () -> Long = { System.currentTimeMillis() },
 ): ApiDeps {
     val dir = createTempDirectory("ezh-api-test").toFile()
@@ -126,7 +124,6 @@ fun newDeps(
         ),
         assets = assets,
         bundles = bundles,
-        groupsApi = groupsApi,
         clock = clock,
     )
 }

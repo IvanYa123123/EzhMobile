@@ -45,9 +45,6 @@ fun intOf(value: JsonElement?, default: Int = 0): Int {
     return default
 }
 
-fun boolOf(value: JsonElement?, default: Boolean = false): Boolean =
-    (value as? JsonPrimitive)?.booleanOrNull ?: default
-
 fun JsonObject.text(key: String, default: String = ""): String = strOf(this[key], default)
 fun JsonObject.number(key: String, default: Int = 0): Int = intOf(this[key], default)
 

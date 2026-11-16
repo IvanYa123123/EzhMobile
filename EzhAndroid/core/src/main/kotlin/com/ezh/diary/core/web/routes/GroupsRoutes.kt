@@ -21,7 +21,7 @@ import kotlinx.serialization.json.put
 /**
  * Порт routes_groups.py (кроме `/`, который отдаёт staticRoutes).
  *
- * Список берётся из Group.txt (в APK — assets), при пустоте — с сайта;
+ * Список берётся из Group.txt (в APK — assets);
  * пользовательские группы добавляются в конец, дубликаты не появляются.
  */
 fun Route.groupsRoutes(deps: ApiDeps) {
@@ -34,10 +34,6 @@ fun Route.groupsRoutes(deps: ApiDeps) {
             ?.filter { it.isNotEmpty() }
             ?.toMutableList()
             ?: mutableListOf()
-        if (groups.isEmpty()) {
-            groups.addAll(deps.groupsApi?.groups().orEmpty())
-        }
-
         val seen = groups.toHashSet()
         for (name in deps.customGroups.load()) {
             if (seen.add(name)) groups.add(name)

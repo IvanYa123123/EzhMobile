@@ -4,7 +4,6 @@ import com.ezh.diary.core.db.Db
 import com.ezh.diary.core.moodle.MoodleService
 import com.ezh.diary.core.moodle.OkHttpMoodleHttp
 import com.ezh.diary.core.planner.Planner
-import com.ezh.diary.core.planner.SevsuGroupsApi
 import com.ezh.diary.core.planner.SevsuScheduleApi
 import com.ezh.diary.core.storage.Bundles
 import com.ezh.diary.core.storage.DataFiles
@@ -43,6 +42,5 @@ fun defaultDeps(
         ),
         assets = assets,
         bundles = bundles,
-        groupsApi = SevsuGroupsApi(),
     )
 }

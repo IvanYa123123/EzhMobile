@@ -93,3 +93,6 @@ Thumbs.db
 *.tmp
 *.orig
 *.rej
+
+# Бандл собирается preBuild; в git не храним
+EzhAndroid/app/src/main/assets/static/js/app.bundle.js

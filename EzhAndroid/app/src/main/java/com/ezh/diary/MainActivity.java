@@ -236,7 +236,7 @@ public class MainActivity extends AppCompatActivity {
         setupBackDispatcher();
 
         new Thread(() -> {
-            if (!isServerRunning()) {
+            if (!probeServer()) {
                 startServer();
             } else {
                 Log.d(TAG, "Server is already running");
@@ -245,7 +245,8 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    private boolean isServerRunning() {
+    /** Порт уже слушает локальный сервер? */
+    private boolean probeServer() {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("127.0.0.1", PORT), 200);
             return true;
@@ -289,26 +290,22 @@ public class MainActivity extends AppCompatActivity {
         // 200 × 300 мс = 60 с. На холодном старте Kotlin-сервер
         // на старом устройстве 24 с может не хватить — увеличили до 60.
         for (int i = 0; i < 200; i++) {
-            try {
-                Socket sock = new Socket();
-                sock.connect(new InetSocketAddress("127.0.0.1", PORT), 200);
-                sock.close();
+            if (probeServer()) {
                 runOnUiThread(() -> {
                     webView.setVisibility(View.VISIBLE);
                     webView.loadUrl("http://127.0.0.1:" + PORT + "/");
                 });
                 return;
-            } catch (Exception ignored) {
-                final int step = i;
-                runOnUiThread(() -> {
-                    if (step > 5 && splashStatus != null)
-                        splashStatus.setText("Почти готово…");
-                });
-                try {
-                    Thread.sleep(300);
-                } catch (InterruptedException e) {
-                    return;
-                }
+            }
+            final int step = i;
+            runOnUiThread(() -> {
+                if (step > 5 && splashStatus != null)
+                    splashStatus.setText("Почти готово…");
+            });
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                return;
             }
         }
         runOnUiThread(() -> {

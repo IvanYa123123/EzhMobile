@@ -25,6 +25,8 @@ jobs:
           node-version: '20'
       - name: Download vendor assets
         run: node scripts/fetch_vendor_assets.mjs
+      - name: Build JS bundle
+        run: node scripts/build_js_bundle.mjs
       - name: Install JS test dependencies
         working-directory: tests/js
         run: npm ci --no-audit --no-fund
