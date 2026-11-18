@@ -44,8 +44,36 @@ function fillSettingsForm() {
 
     updateNotificationsHint();
     restoreSettingsSections();
+    refreshSyncInfo();
 }
 window.fillSettingsForm = fillSettingsForm;
+
+// Когда последний раз обновлялись расписание группы и расписания преподавателей.
+async function refreshSyncInfo() {
+    const schedEl = document.getElementById('settingsScheduleUpdated');
+    const teachEl = document.getElementById('settingsTeachersUpdated');
+    if (!schedEl || !teachEl) return;
+
+    const group = (document.getElementById('groupSelect')?.value || '').trim();
+    const subgroup = document.getElementById('subgroupSelect')?.value || '0';
+    try {
+        const info = await apiLoadSyncInfo(group, subgroup);
+        schedEl.textContent = _formatSyncTime(info.schedule_updated_at);
+        teachEl.textContent = _formatSyncTime(info.teachers_updated_at);
+    } catch (e) {
+        schedEl.textContent = '—';
+        teachEl.textContent = '—';
+    }
+}
+
+function _formatSyncTime(seconds) {
+    if (!seconds) return 'нет данных';
+    const ms = Number(seconds) * 1000;
+    if (!Number.isFinite(ms) || ms <= 0) return 'нет данных';
+    return (typeof _formatAgo === 'function') ? _formatAgo(ms)
+        : new Date(ms).toLocaleString('ru-RU');
+}
+window.refreshSyncInfo = refreshSyncInfo;
 
 function applyScheduleColumns() {
     document.body.setAttribute('data-schedule-cols', scheduleTwoColumns ? '2' : '1');

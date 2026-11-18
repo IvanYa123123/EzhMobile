@@ -42,21 +42,18 @@ function _renderEventCard(ev) {
              style="border-left: 3px solid var(--event-color);">
             <div class="schedule-item-top">
                 <span class="schedule-item-time">
-                    <strong class="text-primary">${escapeHtml(ev.time_range)}</strong>
+                    <strong class="text-primary schedule-item-time-text">${escapeHtml(ev.time_range)}</strong>
                     <span class="schedule-item-edit"
                           onclick="openCustomScheduleModal('${ev.date}', ${ev.custom_id})"
                           title="Редактировать">✏️</span>
                 </span>
-                <span class="add-task-btn"
-                      onclick="createTaskFromSchedule('${ev.date}', '${safeSubject}')">+ Заметка</span>
-            </div>
-            <div class="schedule-item-badge">
-                <span class="badge bg-success" style="font-size: 0.7em;">Событие</span>
+                <span class="schedule-item-type schedule-item-type-event">Событие</span>
             </div>
             <div class="schedule-item-title">${escapeHtml(ev.lesson)}</div>
             ${teacherHtml}
             ${locationHtml}
-            <div class="schedule-item-footer"></div>
+            <div class="schedule-item-footer"><span class="add-task-btn"
+                  onclick="createTaskFromSchedule('${ev.date}', '${safeSubject}')">+ Заметка</span></div>
         </div>
     `;
 }
@@ -102,11 +99,14 @@ function _renderPairCard(item) {
         lessonHtml += ` <span style="cursor:pointer; font-size: 0.9em; opacity: 0.4;" onclick="openSubjectSettings('${safeSubjectKey}')" title="Настроить предмет">⚙️</span>`;
     }
 
-    let typeBadge = '';
+    // Тип занятия — жирным в правом верхнем углу, без серой рамки/бейджа.
+    const pairNum = (!item.is_custom && item.n)
+        ? `<span class="schedule-item-num">${escapeHtml(String(item.n))}.</span> ` : '';
+    let typeHtml = '';
     if (item.is_custom && item.is_event) {
-        typeBadge = `<span class="badge bg-success" style="font-size: 0.7em;">Событие</span>`;
+        typeHtml = `<span class="schedule-item-type schedule-item-type-event">Событие</span>`;
     } else if (item.type_name) {
-        typeBadge = `<span class="badge bg-secondary" style="font-size: 0.7em;">${escapeHtml(item.type_name)}</span>`;
+        typeHtml = `<span class="schedule-item-type">${escapeHtml(item.type_name)}</span>`;
     }
 
     let editIconHtml = item.is_custom
@@ -128,16 +128,15 @@ function _renderPairCard(item) {
         <div class="schedule-item shadow-sm" style="${customStyle}">
             <div class="schedule-item-top">
                 <span class="schedule-item-time">
-                    <strong class="text-primary">${escapeHtml(item.time_range)}</strong>
+                    ${pairNum}<strong class="text-primary schedule-item-time-text">${escapeHtml(item.time_range)}</strong>
                     ${editIconHtml}
                 </span>
-                <span class="add-task-btn" onclick="createTaskFromSchedule('${item.date}', '${safeTaskSubject}')">+ Заметка</span>
+                ${typeHtml}
             </div>
-            ${typeBadge ? `<div class="schedule-item-badge">${typeBadge}</div>` : ''}
             <div class="schedule-item-title">${lessonHtml}</div>
             ${teacherHtml}
             ${locationHtml}
-            <div class="schedule-item-footer"></div>
+            <div class="schedule-item-footer"><span class="add-task-btn" onclick="createTaskFromSchedule('${item.date}', '${safeTaskSubject}')">+ Заметка</span></div>
         </div>
     `;
 }

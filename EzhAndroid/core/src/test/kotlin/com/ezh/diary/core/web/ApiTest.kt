@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.long
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -265,5 +266,27 @@ class ApiTest {
 
         val statuses = (1..20).map { client.get("/api/backup").status }
         assertTrue("ожидался 429, были $statuses", HttpStatusCode.TooManyRequests in statuses)
+    }
+
+    @Test
+    fun syncInfoReportsFreshness() = testApplication {
+        val deps = newDeps(FakePlanner(listOf(scheduleItem("2026-11-12"))))
+        application { ezhModule(deps) }
+
+        // До первого синка кэша нет — обе даты null.
+        val empty = Json.parseToJsonElement(client.get("/api/sync_info?group=PIN&subgroup=0").bodyAsText()).jsonObject
+        assertEquals("null", empty["schedule_updated_at"].toString())
+        assertEquals("null", empty["teachers_updated_at"].toString())
+
+        // После загрузки расписания появляется время обновления кэша.
+        assertEquals(HttpStatusCode.OK, client.get("/api/schedule_all?group=PIN&subgroup=0").status)
+        val afterSchedule = Json.parseToJsonElement(client.get("/api/sync_info?group=PIN&subgroup=0").bodyAsText()).jsonObject
+        assertTrue(afterSchedule["schedule_updated_at"]!!.jsonPrimitive.long > 0)
+
+        // Скачанный .ics преподавателя делает свежей и вторую дату.
+        deps.files.ensure()
+        java.io.File(deps.files.teacherSchedulesDir, "abaev.ics").writeText("BEGIN:VCALENDAR")
+        val afterTeachers = Json.parseToJsonElement(client.get("/api/sync_info?group=PIN&subgroup=0").bodyAsText()).jsonObject
+        assertTrue(afterTeachers["teachers_updated_at"]!!.jsonPrimitive.long > 0)
     }
 }

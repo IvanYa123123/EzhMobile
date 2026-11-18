@@ -86,6 +86,7 @@ async function apiUpdateCustomSchedule(id, x) { return apiPut(`/api/custom_sched
 async function apiDeleteCustomSchedule(id)    { return apiDelete(`/api/custom_schedule/${id}`); }
 async function apiSearch(q)                   { return apiGet(`/api/search?q=${encodeURIComponent(q)}`); }
 async function apiSyncScheduleForce(group, sg){ return _fetchScheduleResult(`/api/schedule_sync?group=${encodeURIComponent(group)}&subgroup=${sg}&force=1`); }
+async function apiLoadSyncInfo(group, sg)   { return apiGet(`/api/sync_info?group=${encodeURIComponent(group)}&subgroup=${sg}`); }
 
 async function apiLoadLabItems(group)               { return apiGet(`/api/lab_items?group=${encodeURIComponent(group)}`); }
 async function apiSyncLabItems(group, items)        { return apiPost('/api/lab_items/sync', {group, items}); }

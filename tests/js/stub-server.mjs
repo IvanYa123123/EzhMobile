@@ -183,6 +183,10 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ...teacher, already: false });
     }
 
+    if (p === '/api/sync_info') return sendJson(res, 200, {
+      schedule_updated_at: Math.floor(Date.now() / 1000) - 3600,
+      teachers_updated_at: Math.floor(Date.now() / 1000) - 7200,
+    });
     if (p === '/api/schedule_all') return sendJson(res, 200, schedule());
     if (p === '/api/schedule_sync') return sendJson(res, 200, schedule());
 

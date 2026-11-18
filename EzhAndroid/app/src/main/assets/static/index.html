@@ -462,6 +462,12 @@
         </div>
 
         <div class="settings-group">
+          <div class="settings-group-title">🔄 Обновление данных</div>
+          <div class="settings-row-inline"><span class="settings-row-label">Расписание группы</span><span id="settingsScheduleUpdated" class="text-muted small">—</span></div>
+          <div class="settings-row-inline"><span class="settings-row-label">Расписания преподавателей</span><span id="settingsTeachersUpdated" class="text-muted small">—</span></div>
+        </div>
+
+        <div class="settings-group">
           <div class="settings-group-title">📤 Экспорт</div>
           <button class="btn btn-outline-primary w-100 mb-2" onclick="downloadICS()">📅 Скачать расписание (.ics)</button>
           <button class="btn btn-outline-primary w-100" onclick="downloadTasksICS()">📝 Скачать заметки (.ics)</button>
@@ -777,7 +783,7 @@
     <button type="button" class="mobile-nav-item" data-tab="day" onclick="switchMobileTab('day')"><span class="nav-icon">📄</span><span>День</span></button>
     <button type="button" class="mobile-nav-item" data-tab="people" onclick="switchMobileTab('people')"><span class="nav-icon">👥</span><span>Люди</span></button>
     <button type="button" class="mobile-nav-item" data-tab="widgets" onclick="switchMobileTab('widgets')"><span class="nav-icon">📊</span><span>Виджеты</span></button>
-    <button type="button" class="mobile-nav-item" onclick="openSettingsModal()"><span class="nav-icon">⚙️</span><span>Настройки</span></button>
+    <button type="button" class="mobile-nav-item" data-tab="settings" onclick="openSettingsModal()"><span class="nav-icon">⚙️</span><span>Настройки</span></button>
 </nav>
 
 <script src="/static/vendor/bootstrap.bundle.min.js"></script>

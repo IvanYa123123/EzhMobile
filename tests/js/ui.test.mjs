@@ -156,6 +156,14 @@ test('страница поднимается, настройки открыва
 
 
 
+  // Карточка пары: номер перед временем, тип занятия жирным без серого бейджа.
+  const firstPair = w.document.querySelector('#calendar .schedule-item');
+  assert.ok(firstPair, 'в расписании есть карточка пары');
+  assert.ok(firstPair.querySelector('.schedule-item-num'), 'перед временем есть номер пары');
+  assert.ok(firstPair.querySelector('.schedule-item-type'), 'тип занятия в правом верхнем углу');
+  assert.equal(w.document.querySelectorAll('#calendar .schedule-item-badge').length, 0,
+    'серые бейджи типов убраны в расписании');
+
   // Статус-строка показывается и во вкладке «День».
   w.eval('updateScheduleStatus()');
   const statusDesktop = w.document.getElementById('scheduleStatus').textContent;
@@ -268,6 +276,15 @@ test('телефон: настройки открываются вкладкой
   assert.equal(w.localStorage.getItem('theme'), 'light', 'чужая настройка (тема) не сбрасывается');
   assert.equal(w.document.body.getAttribute('data-mobile-tab'), 'settings',
     'настройки переключили вкладку');
+  const settingsNav = w.document.querySelector('#mobileBottomNav .mobile-nav-item[data-tab="settings"]');
+  assert.ok(settingsNav, 'у кнопки настроек есть data-tab');
+  assert.ok(settingsNav.classList.contains('active'), 'кнопка настроек подсвечена как вкладка');
+
+  // Когда последний раз обновлялись расписания — видно в настройках.
+  await until(() => (w.document.getElementById('settingsScheduleUpdated').textContent || '').trim() !== '—',
+    'времени обновления расписания группы');
+  assert.ok((w.document.getElementById('settingsTeachersUpdated').textContent || '').trim().length > 0,
+    'время обновления расписаний преподавателей заполнено');
 
   // Стиль расписания: по умолчанию одна колонка, переключатель включает две.
   assert.equal(w.document.getElementById('settingsToggleTwoCols').checked, false,
@@ -299,7 +316,20 @@ test('телефон: настройки открываются вкладкой
   w.eval('window.swipeWeek(1)');
   const dayAfter = w.eval('window.expandedDayDateStr');
   const delta = (new Date(dayAfter) - new Date(dayBefore)) / (24 * 60 * 60 * 1000);
-  assert.equal(delta, 1, 'свайп в «Дне» сдвигает дату на один день');
+  // 4. Мини-календарь: точек ровно столько, сколько пар, клик открывает день.
+  w.eval("switchMobileTab('schedule')");
+  w.eval('renderMiniCalendar()');
+  const dateStr = w.eval('cachedSchedule[0].date');
+  const pairCount = w.eval(`cachedSchedule.filter(x => x.date === ${JSON.stringify('__DATE__')}).length`.replace('__DATE__', dateStr));
+  const cell = [...w.document.querySelectorAll('.mini-cal-day')]
+    .find((c) => c.getAttribute('title') === dateStr);
+  assert.ok(cell, `день ${dateStr} есть в мини-календаре`);
+  assert.equal(cell.querySelectorAll('.mini-cal-dot').length, pairCount,
+    'число точек равно числу пар');
+  w.eval(`miniCalPickDate('${dateStr}')`);
+  await until(() => w.document.body.getAttribute('data-mobile-tab') === 'schedule',
+    'перехода в расписание по клику в мини-календаре');
+  assert.ok(w.document.getElementById(`day-col-${dateStr}`), 'неделя содержит выбранный день');
 
   const refs = errors.filter((e) => e.includes('ReferenceError'));
   assert.deepEqual(refs, [], `на странице были ReferenceError: ${refs.join('; ')}`);
@@ -309,7 +339,7 @@ test('телефон: настройки открываются вкладкой
   await sleep(200);
 });
 
-test('последняя вкладка «День» после перезапуска отрисовывается, а не пустая', async (t) => {
+test('после перезапуска всегда открывается расписание, а не последняя вкладка', async (t) => {
   const server = await startServer();
   t.after(() => server.kill());
 
@@ -344,14 +374,10 @@ test('последняя вкладка «День» после перезапу
   const w = dom.window;
   t.after(() => w.close());
 
-  await until(() => w.document.body.getAttribute('data-mobile-tab') === 'day',
-    'восстановления вкладки «День» после перезапуска');
-
-  await until(() => w.eval('window.expandedDayDateStr')
-    && w.document.getElementById('dayViewContent').innerHTML.trim().length > 0,
-    'отрисовки «Дня» после перезапуска');
-  assert.notEqual(w.document.getElementById('dayViewTitle').textContent, 'Дата',
-    'день отрисован, а не пустой');
+  await until(() => w.document.querySelectorAll('#calendar .day-col').length === 7,
+    'рендера расписания после перезапуска');
+  assert.equal(w.document.body.getAttribute('data-mobile-tab'), 'schedule',
+    'после перезапуска открывается расписание, даже если закрыли на «Дне»');
 
   const refs = errors.filter((e) => e.includes('ReferenceError'));
   assert.deepEqual(refs, [], `на странице были ReferenceError: ${refs.join('; ')}`);

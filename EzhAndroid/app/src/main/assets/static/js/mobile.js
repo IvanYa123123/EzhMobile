@@ -167,12 +167,10 @@
 
     function init() {
         if (!isMobile()) return;
-        var saved = "schedule";
-        try { saved = localStorage.getItem(STORAGE_KEY) || "schedule"; } catch (e) {}
         bindWeekSwipes();
-        // switchTab сам готовит вкладку: в «Дне» выставляет дату и рисует её,
-        // в «Настройках» заполняет форму. Иначе после перезапуска «День» пустой.
-        switchTab(saved);
+        // Приложение всегда открывается на «Расписании», а не на последней
+        // вкладке: так просил пользователь — расписание первое, что нужно видеть.
+        switchTab("schedule");
         if (typeof checkOnboarding === 'function') checkOnboarding();
     }
 
